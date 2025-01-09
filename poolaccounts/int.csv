@@ -1,0 +1,3 @@
+,id,Paid_date,Description,Paid_amount,Other_info,Bank_type,approved_date,Is_disbursed,paystatus_fk_id
+0,22,2024-11-30,   BY TRANSFER-NEFT*RATN0000991*N24335703965*Ostro Kannada Power--TRANSFER FROM 3199416044303 / ,217740.0,,SBI,2024-12-02 11:54:16.382802,False,560
+1,23,2024-11-22,   CREDIT-3272080  JSW  RETL VENDORPAY-- / ,7368.0,,SBI,2024-12-02 11:57:11.957510,False,554
