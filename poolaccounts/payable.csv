@@ -1,0 +1,4 @@
+,Fin_year,Week_no,Week_startdate,Week_enddate,Entity,Final_charges,PayableorReceivable,Fin_code,payments__Paid_amount
+24,2024-25,9,2024-05-27,2024-06-02,Karnataka,71808451.0,Receivable,A0074,12852187.0
+34,2024-25,8,2024-05-20,2024-05-26,Karnataka,97846160.0,Receivable,A0074,1084.0
+63,2024-25,5,2024-04-29,2024-05-05,Karnataka,19782581.0,Receivable,A0074,6476.0

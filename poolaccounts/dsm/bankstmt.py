@@ -1,6 +1,6 @@
 from collections import defaultdict
 from dsm.common import getBankShortNames , getFincode,getFeesChargesName,add530hrstoDateString,generateWeekRange,no_data_found_df,int_names,removeInterestTail,getMergedAccts,getWeekDates ,getBankShortNamesList,get_month_start_end_dates
-from dsm.revisions import getRevisionInterestUniqueDates
+from dsm.revisions import getRevisionInterestUniqueDates,getShortfallUniqueDates
 from registration.fetch_data import getFCNames
 from registration.extarctdb_errors import extractdb_errormsg
 from .models import *
@@ -399,7 +399,7 @@ def bankStmtStatus(request):
             
             all_transactions=total_transactions+mapped_transactions+notmapped_transactions+sweep_transactions
 
-            return JsonResponse([all_transactions,getRevisionInterestUniqueDates()],safe=False)
+            return JsonResponse([all_transactions,getRevisionInterestUniqueDates(),getShortfallUniqueDates()],safe=False)
 
       except Exception as e:
             return HttpResponse(extractdb_errormsg(e),status=400)
@@ -592,10 +592,14 @@ def getBillAmount(request):
 
                   elif in_data['AccType'] == 'Interest':
                         try:
-                              final_charges_lst=list(InterestBaseModel.objects.filter(Fin_code=fin_code,Letter_date=in_data['Week_no']).order_by('-Letter_date').values('Final_charges'))
-                              final_charges=final_charges_lst[0]['Final_charges']
+                              final_charges_lst=list(InterestBaseModel.objects.filter(Fin_code=fin_code,Letter_date=in_data['Week_no']).order_by('-Letter_date').values('Final_charges','interestpayments__Paid_amount'))
+                              #final_charges=final_charges_lst[0]['Final_charges']
                         except:
-                              final_charges=0
+                              return JsonResponse(0,safe=False)
+                        # rename irpayments__Paid_amount to Paid_amount
+                        for item in final_charges_lst:
+                              item['Paid_amount'] = item.pop('interestpayments__Paid_amount')
+                        final_charges=calOutstandingAmount(final_charges_lst)
                       
                   elif 'REVISION' in in_data['AccType'] :
                         try:
@@ -610,6 +614,17 @@ def getBillAmount(request):
                        
                         final_charges=calOutstandingAmount(final_charges_lst)
 
+                  elif in_data['AccType'] == 'Shortfall':
+                        try:
+                              final_charges_lst=list(ShortfallBaseModel.objects.filter(Letter_date=in_data['Week_no'],Fin_code=fin_code).values('Final_charges','shortfallpayments__Paid_amount'))
+                        except:
+                              return JsonResponse(0,safe=False)
+                        # rename netaspayments__Paid_amount to Paid_amount
+                        
+                        for item in final_charges_lst:
+                              item['Paid_amount'] = item.pop('shortfallpayments__Paid_amount')
+                        final_charges=calOutstandingAmount(final_charges_lst)
+                  
                   elif in_data['AccType'] == 'CONG':
                         try:
                               final_charges_lst=list(CONGBaseModel.objects.filter(common_qry).values('Final_charges','congpayments__Paid_amount'))
@@ -775,6 +790,17 @@ def getParentModelID(pay):
                         pay['id']=legacy_id
                   except:
                         return False , pay
+            
+            elif pay['AccType'] == 'Shortfall':
+                  try:
+                        # here Entity using becuase firm and infirm may have Same Fin_code 
+                        try:
+                              shortfall_id= ShortfallBaseModel.objects.get(Letter_date=pay['Week_no'],Fin_code=fin_code,Final_charges=pay['Amount']).id
+                        except:
+                              shortfall_id=ShortfallBaseModel.objects.get(Letter_date=pay['Week_no'],Fin_code=fin_code).id
+                        pay['id'] = shortfall_id
+                  except:
+                        return False , pay
 
             elif pay['AccType'] == 'REAC':
                   try:
@@ -791,7 +817,7 @@ def getParentModelID(pay):
                         try:
                               mbas_id=MBASBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code,Final_charges=pay['Amount']).id
                         except:
-                              mbas_id=MBASBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code).id
+                              mbas_id=MBASBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code,Letter_date = pay['Week_no']).id
                         pay['id']=mbas_id
                   except:
                         return False , pay
@@ -799,9 +825,9 @@ def getParentModelID(pay):
             elif 'REVISION' in pay['AccType'] :
                   try:
                         try:
-                              revision_id=RevisionBaseModel.objects.get(Acc_type=pay['AccType'],Fin_code=fin_code,Final_charges=pay['Amount']).id
+                              revision_id=RevisionBaseModel.objects.get(Acc_type=pay['AccType'],Fin_code=fin_code,Final_charges=pay['Amount'],Letter_date=pay['Week_no']).id
                         except:
-                              revision_id=RevisionBaseModel.objects.get(Acc_type=pay['AccType'],Fin_code=fin_code).id
+                              revision_id=RevisionBaseModel.objects.get(Acc_type=pay['AccType'],Fin_code=fin_code,Letter_date=pay['Week_no']).id
                         pay['id']=revision_id
                   except:
                         return False , pay
@@ -877,7 +903,12 @@ def saveBankPayments(request):
                               if check:
                                     # Now check mapped_amount should be less than credited amount - (mapped_amt + entered_amt)
                                     if left_over_bal - ( float(pay['Amount']) ) >= 0: 
-                                          wk_no = pay['Week_no'] if check_string(pay['Week_no']) else 0
+                                          if check_string(pay['Week_no']) :
+                                                wk_no = pay['Week_no'] 
+                                                other_info = pay['OtherInfo']
+                                          else:
+                                                wk_no = 0
+                                                other_info = pay['Week_no']
                                           if ( pay['AccType'] not in ['Interest','EXCESS','F&C','SWEEP','Others'] ) and ('REVISION' not in pay['AccType']):
                                                 MappedBankEntries(
                                                       Pool_Acc=pay['AccType'],
@@ -885,7 +916,7 @@ def saveBankPayments(request):
                                                       Fin_year=pay['Fin_year'],
                                                       Week_no=wk_no,
                                                       Amount=pay['Amount'],
-                                                      Other_info=pay['OtherInfo'],
+                                                      Other_info=other_info,
                                                       ValueDate_fk=BankStatement.objects.get(id=row['id']), # here ID refers to BankTxn id 
                                                       Status='N',  #notified
                                                       Parent_id=pay['id'] #here id may be DSMBaseModel or NETAsBaseModel or REACBaseModel
@@ -1030,38 +1061,70 @@ def approveNetASPayments(row,fin_code):
       return
       
 def approveRevisionPayments(row,fin_code):
-      revision_qry=list(RevisionBaseModel.objects.filter(id=row['Parent_id']).all().values())
-      if len(revision_qry):
-            # first check whether full amount paid or not
-            if row['Amount'] == revision_qry[0]['Final_charges']:
-                  # get the letter to identify all bills
-                  letter_date=revision_qry[0]['Letter_date']
-                  # get all bills related to this letter
-                  all_related_bills=list(DSMBaseModel.objects.filter(Effective_start_date=letter_date,Fin_code=fin_code,Legacy_dues=False).all().values())
-                  for each_bill in all_related_bills:
-                        dsm_obj=DSMBaseModel.objects.get(id=each_bill['id'])
-                        if each_bill['PayableorReceivable'] == 'Payable':
-                              # here updateing payables
-                              Payments(
-                                    Paid_date=row['ValueDate_fk_id__ValueDate'],
-                                    Description=row['ValueDate_fk_id__Description'],
-                                    Paid_amount= each_bill['Final_charges'] ,
-                                    Other_info='Adjusting the cumulative bill',
-                                    Bank_type=row['ValueDate_fk_id__BankType'],
-                                    paystatus_fk=dsm_obj,
-                                    approved_date=datetime.now()
-                                    ).save()
-                        elif each_bill['PayableorReceivable'] == 'Receivable':
-                              DSMReceivables(
-                                    Disbursed_amount=each_bill['Final_charges'],
-                                    rcvstatus_fk=dsm_obj,
-                                    disbursed_date=row['ValueDate_fk_id__ValueDate'],
-                                    neft_txnno=row['ValueDate_fk_id__Description']
-                              ).save()
+      try:
+            revision_qry=list(RevisionBaseModel.objects.filter(id=row['Parent_id']).all().values())
+            if len(revision_qry):
+                  # check part payments made
+                  total_amount = MappedBankEntries.objects.filter(Pool_Acc = row['Pool_Acc'], Entity = row['Entity'],Parent_id = row['Parent_id']).exclude(Status='R').aggregate(total=Sum('Amount'))['total']
+                  # If no matching records, ensure total_amount is not None
+                  total_amount = total_amount if total_amount is not None else 0.0
+                  # first check whether full amount paid or not
+                  if abs(total_amount - float(revision_qry[0]['Final_charges'])) <= 1:
+                        # get the letter to identify all bills
+                        letter_date=revision_qry[0]['Letter_date']
+                        # get all bills related to this letter
+                        all_related_bills_df=pd.DataFrame(DSMBaseModel.objects.filter(Effective_start_date=letter_date,Fin_code=fin_code).values('Fin_year','Week_no','Week_startdate','Week_enddate','Entity','Final_charges','PayableorReceivable','Fin_code','payments__Paid_amount','dsmreceivables__Disbursed_amount'),columns=['Fin_year','Week_no','Week_startdate','Week_enddate','Entity', 'Final_charges', 'PayableorReceivable','Fin_code','payments__Paid_amount','dsmreceivables__Disbursed_amount'])
 
-                        else: continue
-                        
-                  # now update RevisionBasmodel
+                        all_related_bills_df.rename(columns={'payments__Paid_amount':'Paid_amount','dsmreceivables__Disbursed_amount':'Disbursed_amount'},inplace=True)
+
+                        all_related_bills_df['Paid_amount']=all_related_bills_df['Paid_amount'].fillna(0)
+                        all_related_bills_df['Disbursed_amount']=all_related_bills_df['Disbursed_amount'].fillna(0)
+            
+                        all_related_bills_df[['Final_charges', 'Paid_amount','Disbursed_amount']] = all_related_bills_df[['Final_charges', 'Paid_amount','Disbursed_amount']].abs()
+                        sub_bills_df=all_related_bills_df.groupby(['Fin_year', 'Week_no', 'Fin_code']).agg({
+                              'Entity':'first',
+                              'Week_startdate': 'first',
+                              'Week_enddate': 'first',
+                              'Final_charges' : 'first',
+                              'PayableorReceivable': 'first',
+                              'Paid_amount': 'sum',
+                              'Disbursed_amount': 'sum'
+                              }).reset_index()
+                        sub_bills_df['Final_charges'] = sub_bills_df.apply(
+                        lambda row: row['Final_charges'] * -1 if row['PayableorReceivable'] == 'Receivable' else row['Final_charges'],
+                        axis=1
+                        )
+                        sub_bills_df['Paid_amount']=sub_bills_df['Paid_amount']*-1
+                        sub_bills_df['Diff_amount'] = sub_bills_df['Final_charges']+sub_bills_df['Paid_amount']+sub_bills_df['Disbursed_amount']
+                        # Update PayableorReceivable based on Diff_amount
+                        sub_bills_df["PayableorReceivable"] = sub_bills_df["Diff_amount"].apply(lambda x: "Payable" if x > 0 else "Receivable")
+
+                        for _ , sub_row in sub_bills_df.iterrows():
+                              dsm_obj=DSMBaseModel.objects.get(Fin_year = sub_row['Fin_year'] , Week_no = sub_row['Week_no'] , Fin_code = sub_row['Fin_code'] , Effective_end_date__isnull=True)
+                              if sub_row['PayableorReceivable'] == 'Payable':
+                                    # here updating payables
+                                    Payments(
+                                          Paid_date=row['ValueDate_fk_id__ValueDate'],
+                                          Description=row['ValueDate_fk_id__Description'],
+                                          Paid_amount= sub_row['Diff_amount'] ,
+                                          Other_info='Adjusting the cumulative bill',
+                                          Bank_type=row['ValueDate_fk_id__BankType'],
+                                          paystatus_fk=dsm_obj,
+                                          approved_date=datetime.now() ,
+                                          Is_disbursed = True
+                                          ).save()
+                              elif sub_row['PayableorReceivable'] == 'Receivable':
+                                    DSMReceivables(
+                                          Disbursed_amount=sub_row['Diff_amount'],
+                                          rcvstatus_fk=dsm_obj,
+                                          disbursed_date=row['ValueDate_fk_id__ValueDate'],
+                                          neft_txnno=row['ValueDate_fk_id__Description']
+                                    ).save()
+
+                              else: continue
+                              # now update Basemodel
+                              DSMBaseModel.objects.filter(Fin_year = sub_row['Fin_year'] , Week_no = sub_row['Week_no'] , Fin_code = sub_row['Fin_code'] , Effective_end_date__isnull=False).update(Is_disbursed = True)
+                              
                   revisionas_obj_qry=RevisionBaseModel.objects.get(id=row['Parent_id'])
                   RevisionPayments(
                         Paid_date=row['ValueDate_fk_id__ValueDate']  ,
@@ -1071,19 +1134,11 @@ def approveRevisionPayments(row,fin_code):
                         Bank_type=row['ValueDate_fk_id__BankType'],
                         paystatus_fk=revisionas_obj_qry
                   ).save()
-            else: pass
-                  # # not paid full amount
-                  # netas_obj_qry=NetASBaseModel.objects.get(id=netas_qry[0]['id'])
-                  # NetASPayments(
-                  #       Paid_date=row['ValueDate_fk_id__ValueDate']  ,
-                  #       Description=row['ValueDate_fk_id__Description'],
-                  #       Paid_amount=float(row['Amount']),
-                  #       Other_info=row['Other_info'],
-                  #       Bank_type=row['ValueDate_fk_id__BankType'],
-                  #       paystatus_fk=netas_obj_qry
-                  # ).save()
-      return
-      
+            
+            return True , ''
+      except Exception as e:
+            return False , str(e)
+     
 def approvePayments(request):
       try:
             formdata=json.loads(request.body)
@@ -1129,6 +1184,18 @@ def approvePayments(request):
                                     paystatus_fk=reac_obj_qry,
                                     Is_disbursed=False
                               ).save()
+                        
+                        elif row['Pool_Acc'] == 'Shortfall':
+                              reac_obj_qry=ShortfallBaseModel.objects.get(id=row['Parent_id'])
+                              ShortfallPayments(
+                                    Paid_date=row['ValueDate_fk_id__ValueDate']  ,
+                                    Description=row['ValueDate_fk_id__Description'],
+                                    Paid_amount=float(row['Amount']),
+                                    Other_info=row['Other_info'],
+                                    Bank_type=row['ValueDate_fk_id__BankType'],
+                                    paystatus_fk=reac_obj_qry,
+                                    Is_disbursed=False
+                              ).save()
 
                         elif row['Pool_Acc'] == 'CONG':
                               reac_obj_qry=CONGBaseModel.objects.get(id=row['Parent_id'])
@@ -1154,8 +1221,12 @@ def approvePayments(request):
                               ).save()
 
                         elif 'REVISION' in row['Pool_Acc']:
-                              approveRevisionPayments(row,fin_code)
-
+                              check_stat , error = approveRevisionPayments(row,fin_code)
+                              
+                              if not check_stat:
+                                    message_list.append([row['Entity'] + ' error occured '+str(error)+', Please check'])
+                                    return JsonResponse([message_list],safe=False)
+                              
                         elif row['Pool_Acc']  in ['EXCESS','F&C']:
                               ExcessBaseModel(
                                     Entity=row['Entity'],

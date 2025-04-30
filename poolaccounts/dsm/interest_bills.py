@@ -10,12 +10,18 @@ from .models import *
 from dsm.common import no_data_found_df
 from .engine_create import engine
 from sqlalchemy.exc import IntegrityError
+import numpy as np
 
 def getDelayedPayments(pay_model,start_date_obj,end_date_obj,pool_acc):
 
-      payments_inselected_month_df=pd.DataFrame(pay_model.objects.filter(Paid_date__range=[start_date_obj,end_date_obj]).values('paystatus_fk__Fin_year','paystatus_fk__Week_no','paystatus_fk__Due_date','paystatus_fk__Entity','paystatus_fk__Fin_code','paystatus_fk__Final_charges','Paid_date','Paid_amount'),
-            columns=['paystatus_fk__Fin_year', 'paystatus_fk__Week_no',
-                                    'paystatus_fk__Due_date', 'paystatus_fk__Entity','paystatus_fk__Fin_code','paystatus_fk__Final_charges', 'Paid_date','Paid_amount','Acc_type'])
+      try :
+            payments_inselected_month_df=pd.DataFrame(pay_model.objects.filter(Paid_date__range=[start_date_obj,end_date_obj]).values('paystatus_fk__Fin_year','paystatus_fk__Week_no','paystatus_fk__Due_date','paystatus_fk__Entity','paystatus_fk__Fin_code','paystatus_fk__Final_charges','Paid_date','Paid_amount'),
+                  columns=['paystatus_fk__Fin_year', 'paystatus_fk__Week_no',
+                                          'paystatus_fk__Due_date', 'paystatus_fk__Entity','paystatus_fk__Fin_code','paystatus_fk__Final_charges', 'Paid_date','Paid_amount','Acc_type'])
+      except :
+            payments_inselected_month_df=pd.DataFrame(pay_model.objects.filter(Paid_date__range=[start_date_obj,end_date_obj]).values('paystatus_fk__Fin_year','paystatus_fk__Letter_date','paystatus_fk__Due_date','paystatus_fk__Entity','paystatus_fk__Fin_code','paystatus_fk__Final_charges','Paid_date','Paid_amount'),
+                  columns=['paystatus_fk__Fin_year', 'paystatus_fk__Week_no',
+                                          'paystatus_fk__Due_date', 'paystatus_fk__Entity','paystatus_fk__Fin_code','paystatus_fk__Final_charges', 'Paid_date','Paid_amount','Acc_type'])
 
       # Convert date columns to datetime
       payments_inselected_month_df['paystatus_fk__Due_date'] = pd.to_datetime(payments_inselected_month_df['paystatus_fk__Due_date'])
@@ -38,14 +44,14 @@ def getMonthlyIntersetCalc(request):
             # check if already stored then return empty df
             if TempInterestBaseModel.objects.filter(Letter_date=start_date_obj).count() >0:
                   return JsonResponse([{}, letter_dates],safe=False)
-         
+
             dsm_delayed_payments_df=getDelayedPayments(Payments,start_date_obj,end_date_obj,'DSM')
-            sras_delayed_payments_df=getDelayedPayments(SRASPayments,start_date_obj,end_date_obj,'SRAS')
-            tras_delayed_payments_df=getDelayedPayments(TRASPayments,start_date_obj,end_date_obj,'TRAS')
-            mbas_delayed_payments_df=getDelayedPayments(MBASPayments,start_date_obj,end_date_obj,'MBAS')
+            netas_delayed_payments_df=getDelayedPayments(NetASPayments,start_date_obj,end_date_obj,'NETAS')
             reac_delayed_payments_df=getDelayedPayments(REACPayments,start_date_obj,end_date_obj,'REAC')
-            
-            payments_inselected_month_df=pd.concat([dsm_delayed_payments_df,sras_delayed_payments_df,tras_delayed_payments_df,mbas_delayed_payments_df,reac_delayed_payments_df])
+            cong_delayed_payments_df=getDelayedPayments(CONGPayments,start_date_obj,end_date_obj,'CONG')
+            legacy_delayed_payments_df=getDelayedPayments(LegacyPayments,start_date_obj,end_date_obj,'LEGACY')
+            shortfall_delayed_payments_df = getDelayedPayments(ShortfallPayments,start_date_obj,end_date_obj,'Shortfall')
+            payments_inselected_month_df=pd.concat([dsm_delayed_payments_df,netas_delayed_payments_df,reac_delayed_payments_df,cong_delayed_payments_df,legacy_delayed_payments_df,shortfall_delayed_payments_df])
             
             # check if already stored or not
             # Collect indices of rows to be deleted
@@ -62,7 +68,11 @@ def getMonthlyIntersetCalc(request):
             # Filter rows where Paid_date is greater than paystatus_fk__Due_date
             filtered_df = payments_inselected_month_df[payments_inselected_month_df['Paid_date'] > payments_inselected_month_df['paystatus_fk__Due_date']].copy()
             # Calculate the difference in days and store in a new column
-            filtered_df.loc[:, 'Days_Late'] = (filtered_df['Paid_date'] - filtered_df['paystatus_fk__Due_date']).dt.days 
+            filtered_df.loc[:, 'Days_Late'] = np.where(
+                  filtered_df['Acc_type'] == 'REAC', 
+                  (filtered_df['Paid_date'] - filtered_df['paystatus_fk__Due_date'] - pd.Timedelta(days=2)).dt.days, 
+                  (filtered_df['Paid_date'] - filtered_df['paystatus_fk__Due_date']).dt.days
+                  )
             # Ensure Days_Late is not negative
             filtered_df.loc[:, 'Days_Late'] = filtered_df['Days_Late'].apply(lambda x: x if x > 0 else 0)
 
@@ -72,8 +82,6 @@ def getMonthlyIntersetCalc(request):
             # ceiling 
             filtered_df['Interest_payable_topool']=filtered_df['Interest_payable_topool'].apply(lambda x: math.ceil(x)) 
       
-            
-
             return JsonResponse([filtered_df.to_dict(orient='records') , letter_dates],safe=False)
       
       except Exception as e:
@@ -86,12 +94,12 @@ def downloadIntersetCalc(request):
             start_date_obj,end_date_obj=get_month_start_end_dates(selected_month)
 
             dsm_delayed_payments_df=getDelayedPayments(Payments,start_date_obj,end_date_obj,'DSM')
-            sras_delayed_payments_df=getDelayedPayments(SRASPayments,start_date_obj,end_date_obj,'SRAS')
-            tras_delayed_payments_df=getDelayedPayments(TRASPayments,start_date_obj,end_date_obj,'TRAS')
-            mbas_delayed_payments_df=getDelayedPayments(MBASPayments,start_date_obj,end_date_obj,'MBAS')
+            netas_delayed_payments_df=getDelayedPayments(NetASPayments,start_date_obj,end_date_obj,'NETAS')
             reac_delayed_payments_df=getDelayedPayments(REACPayments,start_date_obj,end_date_obj,'REAC')
-            
-            payments_inselected_month_df=pd.concat([dsm_delayed_payments_df,sras_delayed_payments_df,tras_delayed_payments_df,mbas_delayed_payments_df,reac_delayed_payments_df])
+            cong_delayed_payments_df=getDelayedPayments(CONGPayments,start_date_obj,end_date_obj,'CONG')
+            legacy_delayed_payments_df=getDelayedPayments(LegacyPayments,start_date_obj,end_date_obj,'LEGACY')
+            shortfall_delayed_payments_df = getDelayedPayments(ShortfallPayments,start_date_obj,end_date_obj,'Shortfall')
+            payments_inselected_month_df=pd.concat([dsm_delayed_payments_df,netas_delayed_payments_df,reac_delayed_payments_df,cong_delayed_payments_df,legacy_delayed_payments_df,shortfall_delayed_payments_df])
             
             # check if already stored or not
             # Collect indices of rows to be deleted
@@ -108,7 +116,11 @@ def downloadIntersetCalc(request):
             # Filter rows where Paid_date is greater than paystatus_fk__Due_date
             filtered_df = payments_inselected_month_df[payments_inselected_month_df['Paid_date'] > payments_inselected_month_df['paystatus_fk__Due_date']].copy()
             # Calculate the difference in days and store in a new column
-            filtered_df.loc[:, 'Days_Late'] = (filtered_df['Paid_date'] - filtered_df['paystatus_fk__Due_date']).dt.days 
+            filtered_df.loc[:, 'Days_Late'] = np.where(
+                  filtered_df['Acc_type'] == 'REAC', 
+                  (filtered_df['Paid_date'] - filtered_df['paystatus_fk__Due_date'] - pd.Timedelta(days=2)).dt.days, 
+                  (filtered_df['Paid_date'] - filtered_df['paystatus_fk__Due_date']).dt.days
+                  ) 
             # Ensure Days_Late is not negative
             filtered_df.loc[:, 'Days_Late'] = filtered_df['Days_Late'].apply(lambda x: x if x > 0 else 0)
 
@@ -126,11 +138,11 @@ def downloadIntersetCalc(request):
             parent_folder = os.path.abspath(os.path.join(base_dir, os.pardir))
             directory = os.path.join(parent_folder, 'Files', 'ViewBills' )
                   
-            in_filename='InterestCalc'+str(selected_month)+'.csv'
+            in_filename='InterestCalc'+str(selected_month)+'.xlsx'
             full_path=os.path.join(directory, in_filename)
-            filtered_df.to_csv(full_path,index=False)
+            filtered_df.to_excel(full_path,index=False)
 
-            return FileResponse(open(full_path,'rb'),content_type='text/csv') 
+            return FileResponse(open(full_path,'rb'),content_type='text/xlsx') 
 
       except Exception as e:
             extractdb_errormsg(e)

@@ -15,7 +15,9 @@ from .revision_models import *
 from .cong_models import *
 from .reconciliation_models import *
 from .legacy_models import *
-
+from .short_fall_models import *
+from .scuc_cc_models import *
+from .recon_models import *
 # Create your models here.
 
 class DSMBaseModel(models.Model):

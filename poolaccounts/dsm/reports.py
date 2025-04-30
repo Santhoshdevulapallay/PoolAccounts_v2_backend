@@ -164,14 +164,14 @@ def processAllPayables(model_obj_qry ,iom_date,payrcv,prevwkstatus ,pool_acc,fin
         return all_payables,all_prev_payables
 
     elif pool_acc == 'NET_AS':
-        current_week_payables_df=pd.DataFrame(NetASBaseModel.objects.filter(Fin_year=fin_year,Week_no=week_no,PayableorReceivable='Payable',Legacy_dues=False).values('Fin_year','Week_no','Entity','Fin_code','Final_charges','Due_date'))
-        current_week_payments_df=pd.DataFrame(NetASPayments.objects.filter(paystatus_fk__Fin_year=fin_year,paystatus_fk__Week_no=week_no).values('Paid_date','Paid_amount','Bank_type','paystatus_fk__Fin_year','paystatus_fk__Week_no','paystatus_fk__Entity'))
+        current_week_payables_df=pd.DataFrame(NetASBaseModel.objects.filter(Fin_year=fin_year,Week_no=week_no,PayableorReceivable='Payable',Legacy_dues=False).values('Fin_year','Week_no','Entity','Fin_code','Final_charges','Due_date') , columns = ['Fin_year','Week_no','Entity','Fin_code','Final_charges','Due_date'] )
+        current_week_payments_df=pd.DataFrame(NetASPayments.objects.filter(paystatus_fk__Fin_year=fin_year,paystatus_fk__Week_no=week_no).values('Paid_date','Paid_amount','Bank_type','paystatus_fk__Fin_year','paystatus_fk__Week_no','paystatus_fk__Entity'), columns=['Paid_date','Paid_amount','Bank_type','paystatus_fk__Fin_year','paystatus_fk__Week_no','paystatus_fk__Entity'])
 
         current_week_payments_df.rename(columns={'paystatus_fk__Fin_year':'Fin_year','paystatus_fk__Week_no':'Week_no','paystatus_fk__Entity':'Entity'},inplace=True)
         
 
-        all_week_payables_df = pd.DataFrame(NetASBaseModel.objects.filter(PayableorReceivable='Payable',Legacy_dues=False).values('Fin_year','Week_no','Entity','Fin_code','Final_charges','Due_date'))
-        all_week_payments_df=pd.DataFrame(NetASPayments.objects.values('Paid_date','Paid_amount','Bank_type','paystatus_fk__Fin_year','paystatus_fk__Week_no','paystatus_fk__Entity'))
+        all_week_payables_df = pd.DataFrame(NetASBaseModel.objects.filter(PayableorReceivable='Payable',Legacy_dues=False).values('Fin_year','Week_no','Entity','Fin_code','Final_charges','Due_date') ,columns=['Fin_year','Week_no','Entity','Fin_code','Final_charges','Due_date'])
+        all_week_payments_df=pd.DataFrame(NetASPayments.objects.values('Paid_date','Paid_amount','Bank_type','paystatus_fk__Fin_year','paystatus_fk__Week_no','paystatus_fk__Entity') ,columns=['Paid_date','Paid_amount','Bank_type','paystatus_fk__Fin_year','paystatus_fk__Week_no','paystatus_fk__Entity'])
         all_week_payments_df.rename(columns={'paystatus_fk__Fin_year':'Fin_year','paystatus_fk__Week_no':'Week_no','paystatus_fk__Entity':'Entity'},inplace=True)
         merged_all_weeks = pd.merge(all_week_payables_df,all_week_payments_df,on=['Fin_year','Week_no','Entity'],how='left')
         dis_status = pd.DataFrame(list(DisbursementStatus.objects.filter(final_disburse=True,legacy_status = False).order_by('-Disbursed_date').values('Disbursed_date')))
@@ -389,8 +389,8 @@ def processAllReceivables(poolacc_obj_qry ,iom_date,prevwkstatus,pool_acc,fin_ye
     else: 
         pass
     
-    current_week_receivables_df_base=pd.DataFrame(acc_basemodel_mdl.objects.filter(Fin_year=fin_year,Week_no=week_no,PayableorReceivable='Receivable',Legacy_dues=False).values('Fin_year','Week_no','Entity','Fin_code','Final_charges','Due_date'))
-    current_week_receivables_df_rcv=pd.DataFrame(acc_receivables_mdl.objects.filter(rcvstatus_fk__Fin_year=fin_year,rcvstatus_fk__Week_no=week_no).values('disbursed_date','Disbursed_amount','rcvstatus_fk__Fin_year','rcvstatus_fk__Week_no','rcvstatus_fk__Entity'))
+    current_week_receivables_df_base=pd.DataFrame(acc_basemodel_mdl.objects.filter(Fin_year=fin_year,Week_no=week_no,PayableorReceivable='Receivable',Legacy_dues=False).values('Fin_year','Week_no','Entity','Fin_code','Final_charges','Due_date') ,columns=['Fin_year','Week_no','Entity','Fin_code','Final_charges','Due_date'])
+    current_week_receivables_df_rcv=pd.DataFrame(acc_receivables_mdl.objects.filter(rcvstatus_fk__Fin_year=fin_year,rcvstatus_fk__Week_no=week_no).values('disbursed_date','Disbursed_amount','rcvstatus_fk__Fin_year','rcvstatus_fk__Week_no','rcvstatus_fk__Entity') ,columns=['disbursed_date','Disbursed_amount','rcvstatus_fk__Fin_year','rcvstatus_fk__Week_no','rcvstatus_fk__Entity'])
     if not current_week_receivables_df_rcv.empty:
         current_week_receivables_df_rcv.rename(columns={'rcvstatus_fk__Fin_year':'Fin_year','rcvstatus_fk__Week_no':'Week_no','rcvstatus_fk__Entity':'Entity'},inplace=True)
         current_week_receivables_df = pd.merge(current_week_receivables_df_base,current_week_receivables_df_rcv,on=['Fin_year', 'Week_no','Entity'],how='left')

@@ -9,41 +9,43 @@ from django.conf.urls.static import static
 urlpatterns = [
 
       path('check_login/',views.login),
-      path('logout/',permission_classes([IsAuthenticated])(views.logout)),
+      path('logout/',views.logout),
       # get dashboard data
-      path('get_dashboard_data/',permission_classes([IsAuthenticated])(views.getDashboardData)),
+      path('get_dashboard_data/',views.getDashboardData),
 
       #add bank and entity details
-      path('new_registration/',permission_classes([IsAuthenticated])(views.newRegistration)),
-      path('update_entity_registration/',permission_classes([IsAuthenticated])(views.updateEntityRegistration)),
-      path('update_contact_registration/',permission_classes([IsAuthenticated])(views.updateContactRegistration)),
-      path('get_all_entity_details/', permission_classes([IsAuthenticated])(views.getRegisteredEntities )),
+      path('new_registration/',views.newRegistration),
+      path('update_entity_registration/',views.updateEntityRegistration),
+      path('update_contact_registration/',views.updateContactRegistration),
+      path('get_all_entity_details/', views.getRegisteredEntities ),
+      path('get_fin_fc_names/', (views.getFinFCNames )),
 
-
-      path('add_bank_details/',permission_classes([IsAuthenticated])(views.addBankDetails)),
-      path('get_all_bank_details/', permission_classes([IsAuthenticated])(views.getBankDetails )),
-      path('download_bankfiles/', permission_classes([IsAuthenticated])(views.downloadBankFiles)),
+      path('add_bank_details/',views.addBankDetails),
+      path('get_all_bank_details/', views.getBankDetails ),
+      path('download_bankfiles/', views.downloadBankFiles),
       # create user page
-      path('get_all_dept_users/', permission_classes([IsAuthenticated])(views.allDeptUsers)),
-      path('create_user/', permission_classes([IsAuthenticated])(views.createUser)),
+      path('get_all_dept_users/', views.allDeptUsers),
+      path('create_user/', views.createUser),
 
       # fetch srpc bills
-      path('fetch_website_read/', permission_classes([IsAuthenticated])(views.fetchedWeekFiles )),
-      path('fetch_poolaccts_entities/', permission_classes([IsAuthenticated])(views.fetchPoolAcctsEntities )),
+      path('fetch_website_read/', views.fetchedWeekFiles ),
+      path('fetch_poolaccts_entities/', views.fetchPoolAcctsEntities ),
       
-      path('upload_bank_stmt/', permission_classes([IsAuthenticated])(views.uploadBankStmt )),
+      path('upload_bank_stmt/', views.uploadBankStmt ),
       # disbursement priority configuration
-      path('get_config_list/', permission_classes([IsAuthenticated])(views.getConfigList )),
-      path('disburse_order/', permission_classes([IsAuthenticated])(views.disbursementOrder )),
+      path('get_config_list/', views.getConfigList ),
+      path('disburse_order/', views.disbursementOrder ),
       # employee 
-      path('add_employee/', permission_classes([IsAuthenticated])(views.addEmployee )),
+      path('add_employee/', views.addEmployee ),
       # due date configuration
-      path('duedates_config/', permission_classes([IsAuthenticated])(views.dueDatesConfig )),
-      path('get_short_name_mappings/', permission_classes([IsAuthenticated])(views.shortNameMappings )),
-      path('add_new_short_name/', permission_classes([IsAuthenticated])(views.addNewShortName )) ,
+      path('duedates_config/', views.dueDatesConfig ),
+      path('get_short_name_mappings/', views.shortNameMappings ),
+      path('add_new_short_name/', views.addNewShortName ),
 
       path('temp_store/', views.tempStore ), 
-      path('scuc_store/', permission_classes([IsAuthenticated])(views.scucStore )),
+      path('scuc_store/', views.scucStore ),
+      # user module
+      path('get_basic_details/', (views.getUtilBasicDetails )),
       # admin page
       path('admin/', admin.site.urls),
 ]

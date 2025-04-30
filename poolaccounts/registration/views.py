@@ -11,6 +11,7 @@ from .configuration import *
 from .auth_service import *
 from dsm.models import *
 from .dashboard import *
+from .util_basic_info import *
 # Create your views here.
 
 

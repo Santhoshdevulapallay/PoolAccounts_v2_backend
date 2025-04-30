@@ -37,7 +37,7 @@ month_name_dict={
       'dec':'dec'
 }
 
-keys = ['DSM', 'REAC', 'IR', 'NET_AS','Interest','REV','CONG','Others']
+keys = ['DSM', 'REAC', 'IR', 'NET_AS','Interest','REV','CONG','Others','Shortfall']
 legacy_keys = ['DSM', 'REAC', 'CONG','Legacy']
 def generateWeekRange(week_nos_range):
       try:
@@ -197,7 +197,24 @@ def format_indian_currency(amount):
             return formatted_amount
     except:
         return amount
-
+    
+def format_indian_currency_withoutsymbol(amount):
+    try:
+        # Set locale for Indian currency formatting
+        locale.setlocale(locale.LC_MONETARY, 'en_IN.UTF-8')
+        # Check if the amount is negative
+        is_negative = amount < 0
+        # Format the absolute value of the amount
+        formatted_amount = locale.currency(abs(amount), grouping=True)
+        formatted_amount = formatted_amount.replace('₹' ,'').strip()
+        # Add the negative sign and Indian Rupee symbol if the amount is negative
+        if is_negative:
+            return '-' + formatted_amount[1:]
+        else:
+            return formatted_amount
+    except:
+        return amount
+    
 def get_month_start_end_dates(selected_month):
     # Convert the string to a datetime object representing the first day of the month
     start_date = datetime.strptime(selected_month, '%Y-%m')

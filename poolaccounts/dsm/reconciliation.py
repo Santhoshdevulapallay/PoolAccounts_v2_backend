@@ -12,6 +12,7 @@ from openpyxl.styles import PatternFill, Border, Side, Alignment, Protection, Fo
 import os , random
 import pandas as pd
 from poolaccounts.settings import base_dir
+from dsm.user_recon import checkBillsNotified
 
 def getPrevYearMonth(selected_month):
     # get closing balances of prev month (selected_monht in '2024-10' format)
@@ -81,81 +82,88 @@ def prepareSummarySheet(wb , summary_sheet):
     return wb
 
 def downloadReconReport(request):
-    try:
-        req_data=json.loads(request.body)
-        start_date,end_date=get_month_start_end_dates(req_data['formdata']['selected_month'])
-           
-        startdate=add530hrstoDateString(start_date).date()
-        enddate=add530hrstoDateString(end_date).date()
-        acc_type = req_data['formdata']['acc_type']
-
-        response = HttpResponse(content_type='application/ms-excel')
-        response['Content-Disposition'] = 'attachment;'
+    
+    req_data=json.loads(request.body)
+    
+    start_date,end_date=get_month_start_end_dates(req_data['formdata']['selected_month'])
         
-        wb=load_workbook(filename = 'DSM_FinReconReport.xlsx')         
-        ws=wb.active
-        all_users=list(Registration.objects.filter(Q(end_date__isnull=True)|Q(end_date__gte=datetime.today())).order_by('fees_charges_name').values_list('fees_charges_name','fin_code'))
+    startdate=add530hrstoDateString(start_date).date()
+    enddate=add530hrstoDateString(end_date).date()
+    acc_type = req_data['formdata']['acc_type']
 
-        disbursed_entities_obj=DisbursedEntities.objects.filter(pool_acctype = acc_type).all()
-        week_start_enddates_obj = YearCalendar.objects.all()
+    response = HttpResponse(content_type='application/ms-excel')
+    response['Content-Disposition'] = 'attachment;'
+    
+    wb=load_workbook(filename = 'DSM_FinReconReport.xlsx')         
+    ws=wb.active
+    all_users=list(Registration.objects.filter(Q(end_date__isnull=True)|Q(end_date__gte=datetime.today())).order_by('fees_charges_name').values_list('fees_charges_name','fin_code'))
 
-        prev_month_year = getPrevYearMonth(req_data['formdata']['selected_month']) 
-        
-        closing_balances_qry =  ClosingBalances.objects.filter(Month_year = prev_month_year , Acc_type = acc_type )
+    disbursed_entities_obj=DisbursedEntities.objects.filter(pool_acctype = acc_type).all()
+    week_start_enddates_obj = YearCalendar.objects.all()
 
-        parent_folder = os.path.abspath(os.path.join(base_dir, os.pardir))
-        directory = os.path.join(parent_folder, 'Files', 'ReconSummary' )
-        
-        if not os.path.exists(directory):
-            # Create the directory if it doesn't exist
-            os.makedirs(directory)
-        
-        if acc_type == 'DSM':
-            basemodel_obj = DSMBaseModel.objects.filter(Q(Disbursement_date__range=[startdate,enddate]))
+    prev_month_year = getPrevYearMonth(req_data['formdata']['selected_month']) 
+    
+    closing_balances_qry =  ClosingBalances.objects.filter(Month_year = prev_month_year , Acc_type = acc_type )
 
-            basemodel_qry = basemodel_obj.filter(Q(PayableorReceivable='Payable',payments__Paid_date__isnull=True ))
-            basemodel_qry_rcv = basemodel_obj.filter(Q(PayableorReceivable='Receivable',dsmreceivables__disbursed_date__isnull=True ))
+    parent_folder = os.path.abspath(os.path.join(base_dir, os.pardir))
+    directory = os.path.join(parent_folder, 'Files', 'ReconSummary' )
+    #import pdb ; pdb.set_trace()
+    
+    if not os.path.exists(directory):
+        # Create the directory if it doesn't exist
+        os.makedirs(directory)
+   
+    if acc_type == 'DSM':
+        basemodel_obj = DSMBaseModel.objects.filter(Q(Letter_date__range=[startdate,enddate]) , Q(Revision_no = 0))
 
-            basemodel_qry_prev = basemodel_obj.filter(Q(PayableorReceivable='Payable',payments__Paid_date__lt = start_date ))
-            basemodel_qry_next = basemodel_obj.filter(Q(PayableorReceivable='Payable',payments__Paid_date__gt=end_date ))
+        basemodel_qry = basemodel_obj.filter(Q(PayableorReceivable='Payable',payments__Paid_date__isnull=True ))
+        basemodel_qry_rcv = basemodel_obj.filter(Q(PayableorReceivable='Receivable',dsmreceivables__disbursed_date__isnull=True ))
+        basemodel_qry_next_rcv = basemodel_obj.filter(Q(PayableorReceivable='Receivable',dsmreceivables__disbursed_date__gt = end_date ))
+        basemodel_qry_next_pay = basemodel_obj.filter(Q(PayableorReceivable='Payable',payments__Paid_date__gt=end_date ))
 
-            payments_model_qry = Payments.objects.filter(Paid_date__range=[startdate,enddate])
-            receivables_qry = DSMReceivables.objects.filter(disbursed_date__range=[startdate,enddate])
-        
-        elif acc_type == 'REAC':
-            basemodel_obj = REACBaseModel.objects.filter(Q(Disbursement_date__range=[startdate,enddate]))
+        payments_model_qry = Payments.objects.filter(Paid_date__range=[startdate,enddate])
+        receivables_qry = DSMReceivables.objects.filter(disbursed_date__range=[startdate,enddate])
+        basemodel_obj_rev = RevisionBaseModel.objects.filter(Q(Letter_date__range=[startdate,enddate]) , Q(Acc_type = 'DSM_REVISION'))
 
-            basemodel_qry = basemodel_obj.filter(Q(PayableorReceivable='Payable',reacpayments__Paid_date__isnull=True ))
 
-            basemodel_qry_rcv = basemodel_obj.filter(Q(PayableorReceivable='Receivable',reacreceivables__disbursed_date__isnull=True ))
+    elif acc_type == 'REAC':
+        basemodel_obj = REACBaseModel.objects.filter(Q(Letter_date__range=[startdate,enddate]))
 
-            basemodel_qry_prev = basemodel_obj.filter(Q(PayableorReceivable='Payable',reacpayments__Paid_date__lt = start_date ))
-            basemodel_qry_next = basemodel_obj.filter(Q(PayableorReceivable='Payable',reacpayments__Paid_date__gt=end_date ))
+        basemodel_qry = basemodel_obj.filter(Q(PayableorReceivable='Payable',reacpayments__Paid_date__isnull=True ))
 
-            payments_model_qry = REACPayments.objects.filter(Paid_date__range=[startdate,enddate])
-            receivables_qry = REACReceivables.objects.filter(disbursed_date__range=[startdate,enddate])
+        basemodel_qry_rcv = basemodel_obj.filter(Q(PayableorReceivable='Receivable',reacreceivables__disbursed_date__isnull=True ))
 
-        elif acc_type == 'NET_AS':
-            basemodel_obj = NetASBaseModel.objects.filter(Q(Disbursement_date__range=[startdate,enddate]))
+        basemodel_qry_next_rcv = basemodel_obj.filter(Q(PayableorReceivable='Receivable',reacreceivables__disbursed_date__gt = end_date ))
 
-            basemodel_qry = basemodel_obj.filter(Q(PayableorReceivable='Payable',netaspayments__Paid_date__isnull=True ))
+        basemodel_qry_next_pay = basemodel_obj.filter(Q(PayableorReceivable='Payable',reacpayments__Paid_date__gt=end_date ))
 
-            basemodel_qry_rcv = basemodel_obj.filter(Q(PayableorReceivable='Receivable',netasreceivables__disbursed_date__isnull=True ))
+        payments_model_qry = REACPayments.objects.filter(Paid_date__range=[startdate,enddate])
+        receivables_qry = REACReceivables.objects.filter(disbursed_date__range=[startdate,enddate])
+        basemodel_obj_rev = RevisionBaseModel.objects.filter(Q(Letter_date__range=[startdate,enddate]) , Q(Acc_type = 'REAC_REVISION'))
 
-            basemodel_qry_prev = basemodel_obj.filter(Q(PayableorReceivable='Payable',netaspayments__Paid_date__lt = start_date ))
-            basemodel_qry_next = basemodel_obj.filter(Q(PayableorReceivable='Payable',netaspayments__Paid_date__gt=end_date ))
+    elif acc_type == 'NET_AS':
+        basemodel_obj = NetASBaseModel.objects.filter(Q(Letter_date__range=[startdate,enddate]))
 
-            payments_model_qry = NetASPayments.objects.filter(Paid_date__range=[startdate,enddate])
-            receivables_qry = NetASReceivables.objects.filter(disbursed_date__range=[startdate,enddate])
-        else:
-            return HttpResponse('error' , status = 404)
+        basemodel_qry = basemodel_obj.filter(Q(PayableorReceivable='Payable',netaspayments__Paid_date__isnull=True ))
 
-        excess_model_qry = ExcessBaseModel.objects.filter(Paid_date__range = [startdate,enddate] )
-        summary_sheet_data = [['Fin Code','Entity Name' , 'Closing Balance']]
+        basemodel_qry_rcv = basemodel_obj.filter(Q(PayableorReceivable='Receivable',netasreceivables__disbursed_date__isnull=True ))
 
-        
-        for user in all_users:
-            
+        basemodel_qry_next_rcv = basemodel_obj.filter(Q(PayableorReceivable='Receivable',netasreceivables__disbursed_date__gt = end_date ))
+
+        basemodel_qry_next_pay = basemodel_obj.filter(Q(PayableorReceivable='Payable',netaspayments__Paid_date__gt=end_date ))
+
+        payments_model_qry = NetASPayments.objects.filter(Paid_date__range=[startdate,enddate])
+        receivables_qry = NetASReceivables.objects.filter(disbursed_date__range=[startdate,enddate])
+        basemodel_obj_rev = RevisionBaseModel.objects.filter(Q(Letter_date__range=[startdate,enddate]) , Q(Acc_type = 'NETAS_REVISION'))
+    else:
+        return HttpResponse('error' , status = 404)
+
+    excess_model_qry = ExcessBaseModel.objects.filter(Paid_date__range = [startdate,enddate] )
+    summary_sheet_data = [['Fin Code','Entity Name' , 'Closing Balance']]
+
+    
+    for user in all_users:
+        try:
             fincode=user[1].replace(" ", "")
             closing_balance_list = list(closing_balances_qry.filter(Fin_code = fincode).values_list('Closing_amount',flat=True))
             closing_balance = closing_balance_list[0] if len(closing_balance_list) else 0
@@ -167,7 +175,7 @@ def downloadReconReport(request):
             entity_name = "".join(entity_name).upper()
             # if two entities names are same then generate Name with some random number
             sheet_name=entity_name[:20] if entity_name[:20] not in wb.sheetnames else entity_name[:20]+str(random.randint(1,10))
-       
+        
             target.title=sheet_name
             ws=wb[sheet_name]
             
@@ -175,30 +183,41 @@ def downloadReconReport(request):
             
             start_payable, start_receivable = 6 , 6
             # payables
-            all_paid_inrange = list(payments_model_qry.filter(paystatus_fk__Fin_code=fincode).values_list('paystatus_fk__Fin_year','paystatus_fk__Week_no','paystatus_fk__Entity','paystatus_fk__Final_charges','paystatus_fk__Disbursement_date','Paid_date','Paid_amount'))
+            #import pdb ; pdb.set_trace()
+            all_paid_inrange = list(payments_model_qry.filter(paystatus_fk__Fin_code=fincode , paystatus_fk__Revision_no = 0).values_list('paystatus_fk__Fin_year','paystatus_fk__Week_no','paystatus_fk__Entity','paystatus_fk__Final_charges','paystatus_fk__Letter_date','Paid_date','Paid_amount'))
             
             all_paid_inrange_list=[list(ele) for ele in all_paid_inrange]
 
-            not_paid_inrange=list(basemodel_qry.filter(Fin_code=fincode).values_list('Fin_year','Week_no','Entity','Final_charges','Disbursement_date'))
-            
-            paid_inrange=list(basemodel_qry_prev.filter(Fin_code=fincode).values_list('Fin_year','Week_no','Entity','Final_charges','Disbursement_date'))
+            not_paid_inrange=list(basemodel_qry.filter(Fin_code=fincode).values_list('Fin_year','Week_no','Entity','Final_charges','Letter_date'))
 
-            paid_outrange = list(basemodel_qry_next.filter(Fin_code=fincode).values_list('Fin_year','Week_no','Entity','Final_charges','Disbursement_date'))
+
+            
+            #paid_inrange=list(basemodel_qry_prev.filter(Fin_code=fincode).values_list('Fin_year','Week_no','Entity','Final_charges','Letter_date'))
+
+            paid_outrange = list(basemodel_qry_next_pay.filter(Fin_code=fincode).values_list('Fin_year','Week_no','Entity','Final_charges','Letter_date'))
             
             not_paid_inrange_list=[list(ele) for ele in not_paid_inrange]
-            paid_inrange_list = [list(ele) for ele in paid_inrange]
             paid_outrange_list = [list(ele) for ele in paid_outrange]
-            not_paid_inrange_list = paid_inrange_list + not_paid_inrange_list+paid_outrange_list
+            not_paid_inrange_list =  not_paid_inrange_list+paid_outrange_list
+            
             for not_paid in not_paid_inrange_list:
                 not_paid.append('')
                 not_paid.append(0)
                 all_paid_inrange_list.append(not_paid.copy())
+            df_reco = pd.DataFrame(all_paid_inrange_list)
+            if len(df_reco)>0:
+                df_reco.columns = ['Fin_year','Week_no','Entity','Final_charges','Letter_date','Paid_date','Paid_amount']
+                #df_reco.loc[df_reco['Week_no'] == 50, 'Final_charges'] = 0
+                df_reco.loc[df_reco.duplicated(subset=['Week_no', 'Entity', 'Final_charges'], keep='first'),'Final_charges'] = 0
+                all_paid_inrange_list1 = df_reco.values.tolist()
+            else : 
+                all_paid_inrange_list1 = all_paid_inrange_list
             
+
             # get iom data
-            for iom in all_paid_inrange_list:
+            for iom in all_paid_inrange_list1:
                 dis_date=list(disbursed_entities_obj.filter(fin_year=iom[0],week_no=iom[1]).distinct().values_list('disstatus_fk__Disbursed_date',flat=True))
                 iom.insert(5, dis_date[0]) if len(dis_date) > 0 else iom.insert(5, '')
-
                 # modify WeekNo column to add Startdate and Enddate
                 start_end_date_list = list(week_start_enddates_obj.filter(fin_year=iom[0] , week_no=iom[1]).values_list('start_date','end_date'))
                 if len(start_end_date_list) > 0:
@@ -211,13 +230,17 @@ def downloadReconReport(request):
                 # remove Fin year not required
                 iom.remove(iom[0])
                 
-                if iom[4]!= '' and (startdate <= iom[4] <= enddate):
+                if iom[5] =='':
                     pass
-                else:
-                    iom[2]=0
+                elif iom[3] < startdate and (startdate <= iom[5] <= enddate):
+                    iom[2] = 0
+                elif (startdate <= iom[3] <= enddate) and (iom[5] > enddate):
+                    iom[6] = 0
+                else :
+                    pass
                 
                 iom.append(float(iom[2]) - float(iom[6]))
-            
+
             #excess payments if any
             excess_payments_qry = list(excess_model_qry.filter(Fin_code = fincode).values_list('Acc_Type','Entity','Final_charges','Paid_date','Final_charges'))
             excess_payments_list=[list(ele) for ele in excess_payments_qry]
@@ -227,17 +250,29 @@ def downloadReconReport(request):
                 excess.insert(4, None)
                 excess.append(0)
 
-            all_paid_inrange_list+= excess_payments_list
+            all_paid_inrange_list1+= excess_payments_list
             # Receivables
-            all_rcv_inrange_df=pd.DataFrame(receivables_qry.filter(rcvstatus_fk__Fin_code=fincode).values('rcvstatus_fk__Week_no','rcvstatus_fk__Entity','rcvstatus_fk__Disbursement_date','rcvstatus_fk__Final_charges','Disbursed_amount','disbursed_date') , columns=['rcvstatus_fk__Week_no','rcvstatus_fk__Entity','rcvstatus_fk__Disbursement_date','rcvstatus_fk__Final_charges','Disbursed_amount','disbursed_date'])
-           
+            all_rcv_inrange_df=pd.DataFrame(receivables_qry.filter(rcvstatus_fk__Fin_code=fincode , rcvstatus_fk__Revision_no = 0).values('rcvstatus_fk__Week_no','rcvstatus_fk__Entity','rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date','rcvstatus_fk__Final_charges','Disbursed_amount','disbursed_date') , columns=['rcvstatus_fk__Week_no','rcvstatus_fk__Entity','rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date','rcvstatus_fk__Final_charges','Disbursed_amount','disbursed_date'])
+            
+            all_rcv_inrange_df['rcvstatus_fk__Letter_date'] = pd.to_datetime(all_rcv_inrange_df['rcvstatus_fk__Letter_date'])
+            all_rcv_inrange_df.loc[all_rcv_inrange_df['rcvstatus_fk__Letter_date'] < start_date, 'rcvstatus_fk__Final_charges'] = 0
+            all_rcv_inrange_df = all_rcv_inrange_df.drop(columns=['rcvstatus_fk__Letter_date'])
+            
             all_rcv_outrange_df=pd.DataFrame(basemodel_qry_rcv.filter(Fin_code=fincode).values('Week_no','Entity','Disbursement_date','Final_charges') , columns=['Week_no','Entity','Disbursement_date','Final_charges'])
             all_rcv_outrange_df['Disbursed_amount'] = 0
 
             all_rcv_outrange_df['disbursed_date'] = pd.NaT
+
+            all_rcv_out_next_df = pd.DataFrame(basemodel_qry_next_rcv.filter(Fin_code=fincode).values('Week_no','Entity','Disbursement_date','Final_charges') , columns=['Week_no','Entity','Disbursement_date','Final_charges'])
+            all_rcv_out_next_df['Disbursed_amount'] = 0
+
+            all_rcv_out_next_df['disbursed_date'] = pd.NaT
             
             all_rcv_outrange_df.columns = ['rcvstatus_fk__Week_no', 'rcvstatus_fk__Entity', 'rcvstatus_fk__Disbursement_date', 'rcvstatus_fk__Final_charges', 'Disbursed_amount', 'disbursed_date']
-            all_rcv_inrange_df = pd.concat([all_rcv_inrange_df,all_rcv_outrange_df],ignore_index=True)
+            all_rcv_out_next_df.columns = ['rcvstatus_fk__Week_no', 'rcvstatus_fk__Entity', 'rcvstatus_fk__Disbursement_date', 'rcvstatus_fk__Final_charges', 'Disbursed_amount', 'disbursed_date']
+
+            all_rcv_inrange_df_1 = pd.concat([all_rcv_inrange_df,all_rcv_outrange_df],ignore_index=True)
+            all_rcv_inrange_df = pd.concat([all_rcv_inrange_df_1,all_rcv_out_next_df],ignore_index=True)
             
             if not all_rcv_inrange_df.empty:
                 # Convert disbursed_date to datetime
@@ -256,13 +291,14 @@ def downloadReconReport(request):
                     }
                 ).reset_index()
                 
+                
                 # Extract date as datetime.date
                 grouped_df["disbursed_date"] = grouped_df["disbursed_date"].dt.date
                 grouped_df["rcvstatus_fk__Disbursement_date"] = grouped_df["rcvstatus_fk__Disbursement_date"].dt.date
                 
-                grouped_df.loc[grouped_df["rcvstatus_fk__Disbursement_date"] < startdate, "rcvstatus_fk__Final_charges"] = 0
+                grouped_df.loc[grouped_df["rcvstatus_fk__Disbursement_date"] < startdate , "rcvstatus_fk__Final_charges"] = 0
                 grouped_df = grouped_df.drop(columns=["rcvstatus_fk__Disbursement_date"])
-
+                
                 all_rcv_inrange_list = grouped_df.values.tolist()
                 # iterate over list and find Balance due
                 for rcv in all_rcv_inrange_list:
@@ -277,18 +313,18 @@ def downloadReconReport(request):
 
             for excess in excess_receivables_list:
                 excess.insert(4,0) # this is outstanding 
-
+            
             all_rcv_inrange_list+=excess_receivables_list
             # writing into excel Payable
             i=0
             payable_out=0
-            for x in range(start_payable,len(all_paid_inrange_list)+start_payable):
+            for x in range(start_payable,len(all_paid_inrange_list1)+start_payable):
                 j=0
                 for y in range(1,9):
-                    ws.cell(row=x,column=y).value=all_paid_inrange_list[i][j]
+                    ws.cell(row=x,column=y).value=all_paid_inrange_list1[i][j]
                     j+=1
                 
-                payable_out+=all_paid_inrange_list[i][-1]
+                payable_out+=all_paid_inrange_list1[i][-1]
                 i+=1 
 
             start_payable+=i
@@ -358,20 +394,20 @@ def downloadReconReport(request):
             
             # summary sheet
             summary_sheet_data.append([fincode , user[0] , net_balance])
-          
-        del wb['Sheet1']   #deleting temp sheet
-        wb = prepareSummarySheet(wb , summary_sheet_data)
+        except Exception as e:
+            continue
 
-        in_filename=str(req_data['formdata']['acc_type'])+'_MonthReconciliation_'+str(req_data['formdata']['selected_month'])+'.xlsx'
-        full_path=os.path.join(directory, in_filename)
-        wb.save(full_path)
-        wb.save(response)    
-        wb.close()
-        return response  
+    del wb['Sheet1']   #deleting temp sheet
+    wb = prepareSummarySheet(wb , summary_sheet_data)
+
+    in_filename=str(req_data['formdata']['acc_type'])+'_MonthReconciliation_'+str(req_data['formdata']['selected_month'])+'.xlsx'
+    full_path=os.path.join(directory, in_filename)
+    wb.save(full_path)
+    wb.save(response)    
+    wb.close()
+    return response  
     
-    except Exception as e:
-        print(e)
-        return HttpResponse(extractdb_errormsg(e),status=400)
+   
 
 
 
@@ -418,4 +454,42 @@ def downloadSummaryReconReport(request):
     
     except Exception as e:
         print(e)
+        return HttpResponse(extractdb_errormsg(e),status=400)
+
+def downloadReconUploadStatus(request):
+    try:
+        req_data=json.loads(request.body)['formdata']
+        acc_type = req_data['acc_type']
+        fin_year = req_data['fin_year']
+        quarter = req_data['quarter']
+        
+        if not checkBillsNotified(acc_type , fin_year , quarter):
+            return HttpResponse( 'Bills not notified , Please wait', status = 404)
+        registration_df = pd.DataFrame(Registration.objects.filter(Q(end_date__isnull=True)|Q(end_date__gte=datetime.today())).order_by('fees_charges_name').values_list('fees_charges_name','fin_code') , columns=['fees_charges_name','fin_code'])
+
+        signed_df = pd.DataFrame(ReconUploadStatus.objects.filter(Acc_type = acc_type ,Fin_year = fin_year , Quarter = quarter ).values('Fin_code','Upload_status','Uploaded_time') , columns=['Fin_code','Upload_status','Uploaded_time'] )
+
+        merged_df = pd.merge(registration_df ,signed_df , left_on='fin_code' , right_on='Fin_code' , how='left')
+        merged_df.drop(columns=['Fin_code' ] , inplace=True)
+        merged_df.fillna('',inplace=True)
+        merged_df.rename(columns= {'fin_code' : 'Party Code' , 'fees_charges_name':'Name' ,'Upload_status':'Upload Status' ,'Uploaded_time' :'Uploaded Time'} , inplace=True)
+        # Specify the new order
+        new_order = ["Party Code", "Name", "Upload Status" ,"Uploaded Time"]
+        # Reorder the DataFrame
+        merged_df = merged_df[new_order]
+        parent_folder = os.path.abspath(os.path.join(base_dir, os.pardir))
+        directory = os.path.join(parent_folder, 'Files', 'ReconSummary' )
+        if not os.path.exists(directory):
+            # Create the directory if it doesn't exist
+            os.makedirs(directory)
+        in_filename='recon_summary&'+fin_year+'&'+quarter+'.csv'
+        full_path=os.path.join(directory, in_filename)
+        temp_out=open(full_path,'w')
+        temp_out.write(' \n ')
+        temp_out.write('Reconciliation Summary for the fin year '+ req_data['fin_year'] +' and for the quarter '+ req_data['quarter'] +' \n')
+        temp_out.close()
+        merged_df.to_csv(full_path, mode='a',index=False )  
+        return FileResponse(open(full_path,'rb'),content_type='text/csv') 
+    
+    except Exception as e:
         return HttpResponse(extractdb_errormsg(e),status=400)

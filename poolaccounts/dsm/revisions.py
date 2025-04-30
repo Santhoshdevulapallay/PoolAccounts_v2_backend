@@ -203,14 +203,35 @@ def getWeekMaxRevision(request):
         wk_no=in_data['wk_no']
 
         week_start_date,week_end_date=getWeekDates(fin_year,wk_no)
+        entity_list = []
+
         if in_data['acc_type'] =='DSM':
-            max_revision=DSMBaseModel.objects.filter(Fin_year=in_data['fin_year'],Week_no=in_data['wk_no']).aggregate(Max('Revision_no'))['Revision_no__max']
+            dsm_base_model_obj = DSMBaseModel.objects.filter(Fin_year=in_data['fin_year'],Week_no=in_data['wk_no'])
+            max_revision=dsm_base_model_obj.aggregate(Max('Revision_no'))['Revision_no__max']
+            
             try:
                 next_revision=max_revision+1
             except:
                 next_revision=0
+        
+            entity_df = pd.DataFrame(dsm_base_model_obj.filter(Effective_end_date__isnull = True).order_by('Entity').values('id','Entity','Fin_code','Final_charges','PayableorReceivable') , columns= ['id','Entity','Fin_code','Final_charges','PayableorReceivable'])
+            entity_df['Revised_charges'] = 0
+            entity_df['RevisedPayableorReceivable'] = '' 
+
+        if in_data['acc_type'] =='NET_AS':
+            dsm_base_model_obj = NetASBaseModel.objects.filter(Fin_year=in_data['fin_year'],Week_no=in_data['wk_no'])
+            max_revision=dsm_base_model_obj.aggregate(Max('Revision_no'))['Revision_no__max']
             
-        return JsonResponse({'next_revision':next_revision,'week_start_date':week_start_date,'week_end_date':week_end_date},safe=False)
+            try:
+                next_revision=max_revision+1
+            except:
+                next_revision=0
+        
+            entity_df = pd.DataFrame(dsm_base_model_obj.filter(Effective_end_date__isnull = True).order_by('Entity').values('id','Entity','Fin_code','Final_charges','PayableorReceivable') , columns= ['id','Entity','Fin_code','Final_charges','PayableorReceivable'])
+            entity_df['Revised_charges'] = 0
+            entity_df['RevisedPayableorReceivable'] = '' 
+         
+        return JsonResponse({'next_revision':next_revision,'week_start_date':week_start_date,'week_end_date':week_end_date , 'entity_list':entity_df.to_dict(orient = 'records')},safe=False)
     
     except Exception as e:
         return HttpResponse(extractdb_errormsg(e),status=400)
@@ -272,7 +293,29 @@ def getRevisionCheckBills(request):
     except Exception as e:
         
         return HttpResponse(extractdb_errormsg(e),status=400)
+
+def getRevisionCheckBillsUserEntry(request):
+    try:
+        formdata=json.loads(request.POST['formdata'])
+        fin_year = formdata['fin_year']
+        week_no = formdata['wk_no']
+
+        tabledata_df = pd.DataFrame(json.loads(request.POST['table_data']))
+
+        if not tabledata_df.empty:
+            # Filter rows where 'PayableorReceivable' is not empty and 'Revised_charges' > 0
+            resulted_df = tabledata_df[(tabledata_df["PayableorReceivable"] != "") & (tabledata_df["Revised_charges"] > 0)]
+        else:
+            resulted_df = pd.DataFrame([])
+        
+        return JsonResponse(resulted_df.to_dict(orient='records'),safe=False)
     
+    except Exception as e:
+        print(e)
+        return HttpResponse(extractdb_errormsg(e),status=400)
+
+
+
 def saveRevisionBill(request):
     try:
         indata=json.loads(request.body)
@@ -280,16 +323,15 @@ def saveRevisionBill(request):
         effective_start_date=add530hrstoDateString(formdata['revision_date']).date()
         prev_end_date=effective_start_date-timedelta(days=1)
         table_data=indata['server_res']
-
         if formdata['acc_type'] == 'DSM':
             dsm_obj=DSMBaseModel.objects.filter(Fin_year=formdata['fin_year'],Week_no=formdata['wk_no'],Effective_end_date__isnull =True)
-            
+
             for row in table_data:
                 fin_code=getFincode(row['Entity'])
                 # first get the old record
-                old_record=list(dsm_obj.filter(Fin_code=fin_code).all().values())
+                old_record=list(dsm_obj.filter(Fin_code=row['Fin_code'] ,  PayableorReceivable = row['PayableorReceivable'],id=row['id']).all().values())
                 # first update Effective_end_date of existing record
-                dsm_obj.filter(Fin_code=fin_code).update(Effective_end_date=prev_end_date)
+                dsm_obj.filter(Fin_code=row['Fin_code'],id=row['id']).update(Effective_end_date=prev_end_date)
                 # create new record with same old data little change
                 if len(old_record):
                     temp_dict=dict(old_record[0])
@@ -319,25 +361,19 @@ def saveRevisionBill(request):
                     temp_dict['Is_disbursed']=False
                     temp_dict['Fully_disbursed']=None
                     temp_dict['Revision_no']=formdata['revision_no']
-                    temp_dict['Final_charges']=row['Final_charges']
-                    temp_dict['PayableorReceivable']=row['PayableorReceivable']
+                    temp_dict['Final_charges']=row['Revised_charges']
+                    temp_dict['PayableorReceivable']=row['RevisedPayableorReceivable']
                     temp_dict['Remarks']=formdata['remarks']
-
                     new_record=DSMBaseModel.objects.create(**temp_dict)
                     # now change the existing paid_amount mapping to new record
-                    Payments.objects.filter(paystatus_fk=old_record[0]['id']).update(paystatus_fk=new_record)
-                    DSMReceivables.objects.filter(rcvstatus_fk=old_record[0]['id']).update(rcvstatus_fk=new_record)
-                    # final_dsm_df=pd.concat([final_dsm_df,temp_df])
-
-            
-            # final_dsm_df.drop(columns=['id'],inplace=True)
-            # final_dsm_df.to_sql('dsm_basemodel', engine, if_exists='append',index=False)  
-            
+                    Payments.objects.filter(paystatus_fk=row['id']).update(paystatus_fk=new_record)
+                    DSMReceivables.objects.filter(rcvstatus_fk=row['id']).update(rcvstatus_fk=new_record)
+                    # final_dsm_df=pd.concat([final_dsm_df,temp_df])            
             
         return JsonResponse([],safe=False)
     
     except Exception as e:
-        print(e)
+        
         return HttpResponse(extractdb_errormsg(e),status=400)
     
 
@@ -369,17 +405,18 @@ def netRevisionCalc(rev_df):
             'Entity':'first',
             'Week_startdate': 'first',
             'Week_enddate': 'first',
-            'Final_charges' : 'sum',
+            'Final_charges' : 'first',
             'PayableorReceivable': 'first',
             'Paid_amount': 'sum',
             'Disbursed_amount': 'sum'
         }).reset_index()
-
+       
         # Apply the transformation
         grouped_df['Final_charges'] = grouped_df.apply(
             lambda row: row['Final_charges'] * -1 if row['PayableorReceivable'] == 'Receivable' else row['Final_charges'],
             axis=1
         )
+        
         grouped_df['Paid_amount']=grouped_df['Paid_amount']*-1
         # rev_df['payments__Paid_amount'] = rev_df.apply(
         #     lambda row: row['payments__Paid_amount'] * -1 if row['PayableorReceivable'] == 'Payable' else row['payments__Paid_amount'],
@@ -392,54 +429,73 @@ def netRevisionCalc(rev_df):
 
         grouped_df['Final_charges'] = grouped_df['Final_charges']+grouped_df['Paid_amount']+grouped_df['Disbursed_amount']
         # Group by 'Entity' and sum the 'Final_charges'
-        result_df = grouped_df.groupby(['Entity','Fin_code'])['Final_charges'].sum().reset_index()
+        result_df = grouped_df.groupby('Fin_code').agg({
+                    'Final_charges': 'sum',
+                    'Entity': 'last'  # or ', '.join if you want all entity names
+                }).reset_index()
         # Create the 'PayableorReceivable' column based on 'Final_charges'
         result_df['PayableorReceivable'] = result_df['Final_charges'].apply(
             lambda x: 'Payable' if x > 0 else 'Receivable'
         )
         # Convert all 'Final_charges' values to positive
         result_df['Final_charges'] = result_df['Final_charges'].abs()
-
         return result_df
     
     except Exception as e:
-        print(e)
+      
         return pd.DataFrame([])
     
 def netRevisionBills(request):
     try:
         formdata=json.loads(request.body)
-        common_qry=Q(Effective_start_date=formdata['revision_date'],Revision_no__gte=1)
+        common_qry=Q(Letter_date=formdata['revision_date'],Revision_no__gte=1)
         if formdata['acc_type'] == 'DSM_REVISION':
             # get all DSM bills of current selected revision_no
-            all_rev_bills_df=pd.DataFrame(DSMBaseModel.objects.filter(common_qry).values('Fin_year','Week_no','Week_startdate','Week_enddate','Entity','Final_charges','PayableorReceivable','Fin_code','payments__Paid_amount','dsmreceivables__Disbursed_amount'),columns=['Fin_year','Week_no','Week_startdate','Week_enddate','Entity', 'Final_charges', 'PayableorReceivable','Fin_code','payments__Paid_amount','dsmreceivables__Disbursed_amount'])
-            # rename the columns
+            all_payable_df = pd.DataFrame(DSMBaseModel.objects.filter(common_qry).values('Fin_year','Week_no','Week_startdate','Week_enddate','Entity','Final_charges','PayableorReceivable','Fin_code','payments__Paid_amount') , columns=['Fin_year','Week_no','Week_startdate','Week_enddate','Entity','Final_charges','PayableorReceivable','Fin_code','payments__Paid_amount'])
+            all_payable_df['dsmreceivables__Disbursed_amount'] = 0
+
+            all_receivable_df = pd.DataFrame(DSMBaseModel.objects.filter(common_qry).values('Fin_year','Week_no','Week_startdate','Week_enddate','Entity','Final_charges','PayableorReceivable','Fin_code','dsmreceivables__Disbursed_amount') ,columns=['Fin_year','Week_no','Week_startdate','Week_enddate','Entity','Final_charges','PayableorReceivable','Fin_code','dsmreceivables__Disbursed_amount'])
+            all_receivable_df['payments__Paid_amount'] = 0
+
+            all_rev_bills_df = pd.concat([all_payable_df ,all_receivable_df])
             
             all_rev_bills_df.rename(columns={'payments__Paid_amount':'Paid_amount','dsmreceivables__Disbursed_amount':'Disbursed_amount'},inplace=True)
 
         elif formdata['acc_type'] == 'REAC_REVISION':
             # get all DSM bills of current selected revision_no
-            all_rev_bills_df=pd.DataFrame(REACBaseModel.objects.filter(common_qry).values('Fin_year','Week_no','Week_startdate','Week_enddate','Entity','Final_charges','PayableorReceivable','Fin_code','reacpayments__Paid_amount','reacreceivables__Disbursed_amount'),columns=['Fin_year','Week_no','Week_startdate','Week_enddate','Entity', 'Final_charges', 'PayableorReceivable','Fin_code','reacpayments__Paid_amount','reacreceivables__Disbursed_amount'])
+            all_payable_df=pd.DataFrame(REACBaseModel.objects.filter(common_qry).values('Fin_year','Week_no','Week_startdate','Week_enddate','Entity','Final_charges','PayableorReceivable','Fin_code','reacpayments__Paid_amount'),columns=['Fin_year','Week_no','Week_startdate','Week_enddate','Entity', 'Final_charges', 'PayableorReceivable','Fin_code','reacpayments__Paid_amount'])
+            all_payable_df['reacreceivables__Disbursed_amount'] = 0
+            
+            all_receivable_df=pd.DataFrame(REACBaseModel.objects.filter(common_qry).values('Fin_year','Week_no','Week_startdate','Week_enddate','Entity','Final_charges','PayableorReceivable','Fin_code'),columns=['Fin_year','Week_no','Week_startdate','Week_enddate','Entity', 'Final_charges', 'PayableorReceivable','Fin_code'])
+            all_receivable_df['reacpayments__Paid_amount'] = 0
+
+            all_rev_bills_df = pd.concat([all_payable_df ,all_receivable_df])
             # rename the columns
             all_rev_bills_df.rename(columns={'reacpayments__Paid_amount':'Paid_amount','reacreceivables__Disbursed_amount':'Disbursed_amount'},inplace=True)
 
         elif formdata['acc_type'] == 'NETAS_REVISION':
             # get all DSM bills of current selected revision_no
-            all_rev_bills_df=pd.DataFrame(NetASBaseModel.objects.filter(common_qry).values('Fin_year','Week_no','Week_startdate','Week_enddate','Entity','Final_charges','PayableorReceivable','Fin_code','netaspayments__Paid_amount','netasreceivables__Disbursed_amount'),columns=['Fin_year','Week_no','Week_startdate','Week_enddate','Entity', 'Final_charges', 'PayableorReceivable','Fin_code','netaspayments__Paid_amount','netasreceivables__Disbursed_amount'])
+            all_payable_df=pd.DataFrame(NetASBaseModel.objects.filter(common_qry).values('Fin_year','Week_no','Week_startdate','Week_enddate','Entity','Final_charges','PayableorReceivable','Fin_code','netaspayments__Paid_amount'),columns=['Fin_year','Week_no','Week_startdate','Week_enddate','Entity', 'Final_charges', 'PayableorReceivable','Fin_code','netaspayments__Paid_amount'])
+            all_payable_df['netasreceivables__Disbursed_amount'] = 0
+
+            all_receivable_df=pd.DataFrame(NetASBaseModel.objects.filter(common_qry).values('Fin_year','Week_no','Week_startdate','Week_enddate','Entity','Final_charges','PayableorReceivable','Fin_code','netasreceivables__Disbursed_amount'),columns=['Fin_year','Week_no','Week_startdate','Week_enddate','Entity', 'Final_charges', 'PayableorReceivable','Fin_code','netasreceivables__Disbursed_amount'])
+            all_receivable_df['netaspayments__Paid_amount'] = 0
+
+            all_rev_bills_df = pd.concat([all_payable_df ,all_receivable_df])
             # rename the columns
             all_rev_bills_df.rename(columns={'netaspayments__Paid_amount':'Paid_amount','netasreceivables__Disbursed_amount':'Disbursed_amount'},inplace=True)
 
         else:
             return JsonResponse([],safe=False)
         
-        
+        #import pdb ; pdb.set_trace()
         all_rev_bills_df['Paid_amount']=all_rev_bills_df['Paid_amount'].fillna(0)
         all_rev_bills_df['Disbursed_amount']=all_rev_bills_df['Disbursed_amount'].fillna(0)
         
         temp_dsm_rev_bills=all_rev_bills_df.copy()
         # remove NaN with empty 
         all_rev_bills_df=all_rev_bills_df.fillna('')
-
+        
         net_rev_df=netRevisionCalc(all_rev_bills_df)
         
         all_rev_bills_df[['Final_charges', 'Paid_amount','Disbursed_amount']] = all_rev_bills_df[['Final_charges', 'Paid_amount','Disbursed_amount']].abs()
@@ -448,9 +504,17 @@ def netRevisionBills(request):
         # modify values according to front end
         final_transform_list=[]
         for _,row in net_rev_df.iterrows():
-            sub_bills=temp_dsm_rev_bills[temp_dsm_rev_bills['Entity']==row['Entity']].to_dict(orient='records')
-            
-            sub_bills_df=pd.DataFrame(sub_bills)
+            sub_bills=temp_dsm_rev_bills[temp_dsm_rev_bills['Fin_code']==row['Fin_code']].to_dict(orient='records')
+           
+            sub_bills_df=pd.DataFrame(sub_bills).groupby(['Fin_year', 'Week_no', 'Fin_code']).agg({
+            'Entity':'first',
+            'Week_startdate': 'first',
+            'Week_enddate': 'first',
+            'Final_charges' : 'mean',
+            'PayableorReceivable': 'first',
+            'Paid_amount': 'sum',
+            'Disbursed_amount': 'sum'
+            }).reset_index()
             sub_bills_df['Final_charges'] = sub_bills_df.apply(
                 lambda row: row['Final_charges'] * -1 if row['PayableorReceivable'] == 'Receivable' else row['Final_charges'],
                 axis=1
@@ -458,11 +522,10 @@ def netRevisionBills(request):
             sub_bills_df['Paid_amount']=sub_bills_df['Paid_amount']*-1
             sub_bills_df['Diff_amount'] = sub_bills_df['Final_charges']+sub_bills_df['Paid_amount']+sub_bills_df['Disbursed_amount']
             
-            
             sub_bills_df['Paid_amount'] = sub_bills_df['Paid_amount'].abs()
             sub_bills_df['Final_charges'] = sub_bills_df['Final_charges'].abs()
             sub_bills_df['Disbursed_amount'] = sub_bills_df['Disbursed_amount'].abs()
-            sub_bills_df['Diff_amount'] = sub_bills_df['Diff_amount'].abs()
+            sub_bills_df['Diff_amount'] = sub_bills_df['Diff_amount']
 
             temp_dict=row.to_dict()
             temp_dict['isExpand']=False
@@ -484,9 +547,11 @@ def downloadRevisionDraftBill(request):
         if formdata['acc_type'] == 'DSM_REVISION':
             # get all DSM bills of current selected revision_no
             all_dsm_rev_bills_df=pd.DataFrame(DSMBaseModel.objects.filter(Effective_start_date=formdata['revision_date'],Revision_no__gte=1).values('Fin_year','Week_no','Week_startdate','Week_enddate','Entity','Final_charges','PayableorReceivable','Fin_code','payments__Paid_amount','dsmreceivables__Disbursed_amount'),columns=['Fin_year','Week_no','Week_startdate','Week_enddate','Entity', 'Final_charges', 'PayableorReceivable','Fin_code','payments__Paid_amount','dsmreceivables__Disbursed_amount'])
+            
+            all_dsm_rev_bills_df.rename(columns={'payments__Paid_amount':'Paid_amount','dsmreceivables__Disbursed_amount':'Disbursed_amount'},inplace=True)
            
-            all_dsm_rev_bills_df['payments__Paid_amount']=all_dsm_rev_bills_df['payments__Paid_amount'].fillna(0)
-            all_dsm_rev_bills_df['dsmreceivables__Disbursed_amount']=all_dsm_rev_bills_df['dsmreceivables__Disbursed_amount'].fillna(0)
+            all_dsm_rev_bills_df['Paid_amount']=all_dsm_rev_bills_df['Paid_amount'].fillna(0)
+            all_dsm_rev_bills_df['Disbursed_amount']=all_dsm_rev_bills_df['Disbursed_amount'].fillna(0)
           
             all_dsm_rev_bills_df=all_dsm_rev_bills_df.fillna('')
             
@@ -502,11 +567,13 @@ def downloadRevisionDraftBill(request):
         in_filename='Revision'+str(formdata['revision_date'])+'.xlsx'
         full_path=os.path.join(directory, in_filename)
         
-        writer = pd.ExcelWriter(full_path, engine='xlsxwriter')
-        net_rev_df.to_excel(writer, sheet_name='Net Bills', index=False)
-        all_dsm_rev_bills_df.to_excel(writer, sheet_name='Week wise', index=False)
-
-        writer.close()
+        #writer = pd.ExcelWriter(full_path, engine='xlsxwriter')
+        #net_rev_df.to_excel(writer, sheet_name='Net Bills', index=False)
+        #all_dsm_rev_bills_df.to_excel(writer, sheet_name='Week wise', index=False)
+        with pd.ExcelWriter(full_path, engine='xlsxwriter') as writer:
+            net_rev_df.to_excel(writer, sheet_name='Net Bills', index=False)
+            all_dsm_rev_bills_df.to_excel(writer, sheet_name='Week wise', index=False)
+            writer.close()
         return FileResponse(open(full_path,'rb'),content_type='text/xlsx')  
     
     except Exception as e:
@@ -684,3 +751,10 @@ def revisionGenIOM(request):
 
         return HttpResponse(extractdb_errormsg(e),status=400)
 
+def getShortfallUniqueDates():
+    try:
+        shortfall_dates=list(ShortfallBaseModel.objects.distinct('Letter_date').order_by('Letter_date').values_list('Letter_date',flat=True))
+        return shortfall_dates
+    except Exception as e:
+        extractdb_errormsg(e)
+        return []

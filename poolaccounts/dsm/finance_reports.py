@@ -13,8 +13,14 @@ from .reac_models import REACBaseModel
 from .sras_models import SRASBaseModel
 from .tras_models import TRASBaseModel
 from .scuc_models import SCUCBaseModel
+from .short_fall_models import *
 from .models import BankStatement,MappedBankEntries
 from django.db.models import Q
+from .legacy_models import LegacyBaseModel
+from datetime import timedelta
+from .interest_models import *
+from .excess_models import * 
+from .short_fall_models import *
 
 def JVPoolAccDetails(fin_year,wk_no,account_codes_df,model_obj,acc_type):
     try:
@@ -99,6 +105,30 @@ def getFincodeUsingParentTable(mapped_df):
             elif row['Pool_Acc'] == 'NET_AS':
                 try:
                     dsm_obj_qry=NetASBaseModel.objects.get(id=row['Parent_id'])
+                    fin_code=dsm_obj_qry.Fin_code
+                except:
+                    continue
+            elif row['Pool_Acc'] == 'Legacy':
+                try:
+                    dsm_obj_qry=LegacyBaseModel.objects.get(id=row['Parent_id'])
+                    fin_code=dsm_obj_qry.Fin_code
+                except:
+                    continue
+            elif row['Pool_Acc'] == 'Interest':
+                try:
+                    dsm_obj_qry=InterestBaseModel.objects.get(id=row['Parent_id'])
+                    fin_code=dsm_obj_qry.Fin_code
+                except:
+                    continue
+            elif row['Pool_Acc'] == 'EXCESS' :
+                try:
+                    dsm_obj_qry=ExcessBaseModel.objects.get(id=row['Parent_id'])
+                    fin_code=dsm_obj_qry.Fin_code
+                except:
+                    continue
+            elif row['Pool_Acc'] == 'Shortfall' :
+                try:
+                    dsm_obj_qry=ShortfallBaseModel.objects.get(id=row['Parent_id'])
                     fin_code=dsm_obj_qry.Fin_code
                 except:
                     continue
@@ -195,12 +225,25 @@ def getOustandingdf(acc_type):
             col_name='reacpayments__Paid_date'
             col_name2 = 'reacpayments__Paid_amount'
             # parent_table_col='reacpayments__paystatus_fk'
+        elif acc_type == 'Legacy':
+            model_obj= LegacyBaseModel
+            col_name='legacypayments__Paid_date'
+            col_name2 = 'legacypayments__Paid_amount'
+        elif acc_type == 'Shortfall':
+            model_obj= ShortfallBaseModel
+            col_name='shortfallpayments__Paid_date'
+            col_name2 = 'shortfallpayments__Paid_amount'
         else:
             # if nothing matches return with empty dataframes
             return pd.DataFrame([],columns=['Fin_year','Week_no','Entity','Outstanding','Fin_code',col_name,col_name2]),pd.DataFrame([],columns=['Fin_code','Outstanding','Entity'])
         
         # get outstanding dues as on date , excluding the records which do not contain Fin codes
-        basemodel_df=pd.DataFrame(model_obj.objects.filter(Due_date__lt= today_date,PayableorReceivable='Payable',Effective_end_date__isnull=True).exclude( Q(Fin_code__isnull=True) | Q(Fin_code='')).values('Fin_year','Week_no','Entity','Final_charges','Fin_code',col_name,col_name2),columns=['Fin_year','Week_no','Entity','Final_charges','Fin_code',col_name,col_name2])
+        if acc_type == 'Shortfall' :
+            basemodel_df=pd.DataFrame(model_obj.objects.filter(Due_date__lt= today_date).exclude( Q(Fin_code__isnull=True) | Q(Fin_code='')).values('Fin_year','Letter_date','Entity','Final_charges','Fin_code',col_name,col_name2),columns=['Fin_year','Letter_date','Entity','Final_charges','Fin_code',col_name,col_name2])
+            basemodel_df['Week_no'] = basemodel_df['Letter_date']
+
+        else :
+            basemodel_df=pd.DataFrame(model_obj.objects.filter(Due_date__lt= today_date,PayableorReceivable='Payable',Effective_end_date__isnull=True).exclude( Q(Fin_code__isnull=True) | Q(Fin_code='')).values('Fin_year','Week_no','Entity','Final_charges','Fin_code',col_name,col_name2),columns=['Fin_year','Week_no','Entity','Final_charges','Fin_code',col_name,col_name2])
         # rename the column
 
         basemodel_df[col_name2] = basemodel_df[col_name2].fillna(0)
@@ -212,7 +255,7 @@ def getOustandingdf(acc_type):
         #basemodel_df.rename(columns={'Final_charges':'Outstanding'},inplace=True)
        
         # Filter rows where 'payments__Paid_date' is None
-        temp_filtered_df = basemodel_grouped[(basemodel_grouped['Outstanding']>5) & (basemodel_grouped['Fin_year'] >= '2024-25')]
+        temp_filtered_df = basemodel_grouped[(basemodel_grouped['Outstanding']>5) & (basemodel_grouped['Fin_year'] >= '2023-24')]
         # now Paid_date column is no longer required
         #temp_filtered_df=temp_filtered_df.drop(columns=[col_name])
         # temp_filtered_df if outstanding is greater than 0
@@ -228,7 +271,6 @@ def getOustandingdf(acc_type):
         # reorder the columns
         new_column_order=['Entity','Fin_code','Outstanding']
         grouped_df=grouped_df[new_column_order]
-
         return filtered_df,grouped_df
         
     except Exception as e:
@@ -257,7 +299,9 @@ def getOutstandingWeekWise(request):
     
     except Exception as e:
         return HttpResponse(extractdb_errormsg(e),status=400)
-    
+
+
+
 def downloadOutstandingXL(request):
     try:
         input_data=json.loads(request.body)['formdata']
@@ -297,3 +341,65 @@ def getUnMappedTxns(request):
     
     except Exception as e:
         return HttpResponse(extractdb_errormsg(e),status=400)
+
+def getOustandingdf_15(acc_type):
+    try:
+        today_date=datetime.today().date()
+        if acc_type == 'DSM':
+            model_obj=DSMBaseModel
+            col_name='payments__Paid_date'
+            col_name2 = 'payments__Paid_amount'
+            # parent_table_col='payments__paystatus_fk'
+        elif acc_type == 'NET_AS':
+            model_obj=NetASBaseModel
+            col_name='netaspayments__Paid_date'
+            col_name2 = 'netaspayments__Paid_amount'
+            # parent_table_col='netaspayments__paystatus_fk'
+        elif acc_type == 'REAC':
+            model_obj=REACBaseModel
+            col_name='reacpayments__Paid_date'
+            col_name2 = 'reacpayments__Paid_amount'
+            # parent_table_col='reacpayments__paystatus_fk'
+        elif acc_type == 'Legacy':
+            model_obj= LegacyBaseModel
+            col_name='legacypayments__Paid_date'
+            col_name2 = 'legacypayments__Paid_amount'
+        else:
+            # if nothing matches return with empty dataframes
+            return pd.DataFrame([],columns=['Fin_year','Week_no','Entity','Outstanding','Fin_code',col_name,col_name2]),pd.DataFrame([],columns=['Fin_code','Outstanding','Entity'])
+        
+        # get outstanding dues as on date , excluding the records which do not contain Fin codes
+        basemodel_df=pd.DataFrame(model_obj.objects.filter(Due_date__lt= today_date-timedelta(15,0,0),PayableorReceivable='Payable',Effective_end_date__isnull=True).exclude( Q(Fin_code__isnull=True) | Q(Fin_code='')).values('Fin_year','Week_no','Entity','Final_charges','Fin_code',col_name,col_name2),columns=['Fin_year','Week_no','Entity','Final_charges','Fin_code',col_name,col_name2])
+        # rename the column
+
+        basemodel_df[col_name2] = basemodel_df[col_name2].fillna(0)
+        basemodel_grouped = basemodel_df.groupby(['Fin_code','Week_no','Fin_year']).agg({  'Entity': 'first','Final_charges':'mean', col_name : 'first',col_name2: 'sum',}).reset_index()
+
+        basemodel_grouped['Outstanding'] = basemodel_grouped['Final_charges'] - basemodel_grouped[col_name2]
+        basemodel_grouped.columns = ['Fin_code', 'Week_no', 'Fin_year', 'Entity', 'Final_charges','Paid_date', 'Paid_amount', 'Outstanding']
+        
+        #basemodel_df.rename(columns={'Final_charges':'Outstanding'},inplace=True)
+       
+        # Filter rows where 'payments__Paid_date' is None
+        temp_filtered_df = basemodel_grouped[(basemodel_grouped['Outstanding']>5) & (basemodel_grouped['Fin_year'] >= '2023-24')]
+        # now Paid_date column is no longer required
+        #temp_filtered_df=temp_filtered_df.drop(columns=[col_name])
+        # temp_filtered_df if outstanding is greater than 0
+        #temp_filtered_df=temp_filtered_df[temp_filtered_df['Outstanding']>0]
+        filtered_df=temp_filtered_df.copy()
+        
+        # sort by Entity
+        filtered_df.sort_values(['Entity','Fin_year','Week_no'],inplace=True)
+        # group by Entity and sum the Final_charges
+        grouped_df = filtered_df.groupby('Fin_code').agg({ 'Outstanding': 'sum', 'Entity': 'first' }).reset_index()  # or 'last', depending on which Entity you want to retain
+        #sort based on Entity 
+        grouped_df.sort_values('Entity',inplace=True)
+        # reorder the columns
+        new_column_order=['Entity','Fin_code','Outstanding']
+        grouped_df=grouped_df[new_column_order]
+
+        return filtered_df,grouped_df
+        
+    except Exception as e:
+        extractdb_errormsg(e)
+        return pd.DataFrame([str(e)],columns=['Fin_year','Week_no','Entity','Outstanding','Fin_code',col_name]),pd.DataFrame([str(e)],columns=['Fin_code','Outstanding','Entity'])

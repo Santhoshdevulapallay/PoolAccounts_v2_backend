@@ -74,6 +74,11 @@ def poolAccPaidAmount(pool_acc):
             # REAC Payments are approved but not considered in disbursement
             reac_payment_qry=RevisionPayments.objects.filter(other_qry)
             paid_amount=reac_payment_qry.aggregate(total_amount=Coalesce(Sum('Paid_amount'),0.0))
+        
+        elif pool_acc == 'Shortfall':
+            # REAC Payments are approved but not considered in disbursement
+            shortfall_payment_qry=ShortfallPayments.objects.filter(Is_disbursed=False)
+            paid_amount=shortfall_payment_qry.aggregate(total_amount=Coalesce(Sum('Paid_amount'),0.0))
 
         elif pool_acc == 'Interest':
             # REAC Payments are approved but not considered in disbursement
@@ -167,6 +172,7 @@ def trasnformFinalReceivables(df,status):
     else:
         
         final_receivables=df.to_dict(orient='records')
+    
 
     return final_receivables 
 
@@ -279,7 +285,7 @@ def getPoolDisbursedAmount(disbursed_entities_qry,pool_acc):
 
 def getPoolAccountSummary(surplus_amt,cal_already_disbursed_amt,legacy_surplus_amt):
     #here keys defined globally
-    dsm_paid_amount, reac_paid_amount, ir_paid_amount, net_as_paid_amount,interest_paid_amount, revision_paid_amount,cong_paid_amount,other_misc_amount = map(poolAccPaidAmount, keys)
+    dsm_paid_amount, reac_paid_amount, ir_paid_amount, net_as_paid_amount,interest_paid_amount, revision_paid_amount,cong_paid_amount,other_misc_amount,shortfall_paid_amount = map(poolAccPaidAmount, keys)
 
     legacy_dsm_paid_amount, legacy_reac_paid_amount, legacy_net_as_paid_amount,legacy_paid_amount = map(poolAccLegacyPaidAmount, legacy_keys)
     
@@ -308,19 +314,19 @@ def getPoolAccountSummary(surplus_amt,cal_already_disbursed_amt,legacy_surplus_a
     else :
         legacy_status = False
 
-    total_amount_inpool=math.floor(surplus_amt + dsm_paid_amount+net_as_paid_amount+reac_paid_amount+interest_paid_amount+ir_paid_amount+revision_paid_amount+cong_paid_amount+other_misc_amount- cal_already_disbursed_amt )
+    total_amount_inpool=math.floor(surplus_amt + dsm_paid_amount+net_as_paid_amount+reac_paid_amount+interest_paid_amount+ir_paid_amount+revision_paid_amount+cong_paid_amount+other_misc_amount+shortfall_paid_amount- cal_already_disbursed_amt )
     total_amount_inpool_legacy=math.floor(legacy_surplus_amt + legacy_dsm_paid_amount+legacy_reac_paid_amount+legacy_net_as_paid_amount+legacy_paid_amount- cal_already_disbursed_amt )
     
     if not legacy_status :
-        total_amount_inpool=math.floor(surplus_amt + dsm_paid_amount+net_as_paid_amount+reac_paid_amount+interest_paid_amount+ir_paid_amount+revision_paid_amount+cong_paid_amount+other_misc_amount- cal_already_disbursed_amt )
+        total_amount_inpool=math.floor(surplus_amt + dsm_paid_amount+net_as_paid_amount+reac_paid_amount+interest_paid_amount+ir_paid_amount+revision_paid_amount+cong_paid_amount+other_misc_amount+shortfall_paid_amount- cal_already_disbursed_amt )
         total_amount_inpool_legacy=math.floor(legacy_surplus_amt + legacy_dsm_paid_amount+legacy_reac_paid_amount+legacy_net_as_paid_amount+legacy_paid_amount)
     else :
-        total_amount_inpool=math.floor(surplus_amt + dsm_paid_amount+net_as_paid_amount+reac_paid_amount+interest_paid_amount+ir_paid_amount+revision_paid_amount+cong_paid_amount+other_misc_amount )
+        total_amount_inpool=math.floor(surplus_amt + dsm_paid_amount+net_as_paid_amount+reac_paid_amount+interest_paid_amount+ir_paid_amount+revision_paid_amount+cong_paid_amount+other_misc_amount+shortfall_paid_amount )
         total_amount_inpool_legacy=math.floor(legacy_surplus_amt + legacy_dsm_paid_amount+legacy_reac_paid_amount+legacy_net_as_paid_amount+legacy_paid_amount- cal_already_disbursed_amt )
 
     
     all_poolaccounts_summary=[
-                {'Total_amount_inpool':total_amount_inpool , 'Prev_wk': math.floor(surplus_amt) , 'DSM': dsm_paid_amount+ir_paid_amount+revision_paid_amount ,'NET_AS':net_as_paid_amount,'REAC':reac_paid_amount ,'CONG':cong_paid_amount, 'Int_Amount':interest_paid_amount,'Already_disbursed':cal_already_disbursed_amt ,'Legacy_total' : total_amount_inpool_legacy,'Legacy_DSM':legacy_dsm_paid_amount,'Legacy_REAC':legacy_reac_paid_amount,'Legacy_NET_AS':legacy_net_as_paid_amount ,'Legacy_legacy' : legacy_paid_amount, 'Prev_wk_legacy': math.floor(legacy_surplus_amt)
+                {'Total_amount_inpool':total_amount_inpool , 'Prev_wk': math.floor(surplus_amt) , 'DSM': dsm_paid_amount+ir_paid_amount+revision_paid_amount+other_misc_amount ,'NET_AS':net_as_paid_amount,'REAC':reac_paid_amount ,'CONG':cong_paid_amount, 'Int_Amount':interest_paid_amount,'Shortfall':shortfall_paid_amount,'Already_disbursed':cal_already_disbursed_amt ,'Legacy_total' : total_amount_inpool_legacy,'Legacy_DSM':legacy_dsm_paid_amount,'Legacy_REAC':legacy_reac_paid_amount,'Legacy_NET_AS':legacy_net_as_paid_amount ,'Legacy_legacy' : legacy_paid_amount, 'Prev_wk_legacy': math.floor(legacy_surplus_amt)
                 }]
     return all_poolaccounts_summary
 
@@ -362,6 +368,7 @@ def getLastDisbursedWk(request):
         partial_dis_status = list(DisbursementStatus.objects.filter(
             ( Q(dsm=False) | Q(net_as=False) |Q(reac=False) | Q(ir=False) | Q(dsm_prevwk=False)| Q(net_as_prevwk=False)| Q(reac_prevwk=False) | Q(final_disburse=False) )
             ).order_by('-Disbursed_date')[:1].values('Disbursed_date','Surplus_amt','dsm','net_as','reac','ir','cong', 'dsm_collected','id','dsm_prevwk','net_as_prevwk','sras_prevwk','tras_prevwk','reac_prevwk','mbas_prevwk','ir_prevwk','cong_prevwk'))
+        
 
         # dsm_status and sras_status are accessing through global variable
         if partial_dis_status:
@@ -405,9 +412,8 @@ def getLastDisbursedWk(request):
             ir_prevwk_status=False
             cong_prevwk_status=False
         
-        
         all_poolaccounts_summary=getPoolAccountSummary(surplus_amt,cal_already_disbursed_amt,legacy_surplus_amt)
-        
+
         # These are for Current Week
         current_wk_models = [
             (DSMBaseModel, 'dsm_status', 'final_dsm_receivables'),
@@ -420,8 +426,10 @@ def getLastDisbursedWk(request):
             if not locals()[status]:
                 receivables_df = pd.DataFrame(model.objects.filter(Q(Is_disbursed=False) ,Q(PayableorReceivable='Receivable'), (Q(Revision_no=0) | Q(Revision_no__isnull=True)) ).order_by('Fin_year', 'Week_no', 'Entity').values('Fin_year', 'Week_no', 'Entity', 'Final_charges', 'Fin_code', 'id'), columns=['Fin_year', 'Week_no', 'Entity', 'Final_charges', 'Fin_code', 'id'])
                 globals()[final_var] = trasnformFinalReceivables(receivables_df,status)
+
             else:
                 globals()[final_var] = []
+        
         
         
         # theser are Partial DIsbursed weeks
@@ -444,6 +452,7 @@ def getLastDisbursedWk(request):
         disbursement_order=list(DisbursementOrder.objects.filter(Q(enddate__isnull=True)|Q(enddate__gte=datetime.now())).values('dsm','net_as','reac','ir','cong'))
         priority_list=[]
         # partially disbursed
+       
         if len(partial_dis_status):
             for key,val in disbursement_order[0].items():
                 for key2,val2 in partial_dis_status[0].items():
@@ -512,6 +521,7 @@ def getLastDisbursedWk(request):
         
         nldc_split_qry = getAlreadyDisbursedAmounts(partial_dis_status ,nldc_split_qry)
 
+
         return JsonResponse([last_disbursed_date, all_poolaccounts_summary,[
             globals()['final_dsm_receivables'],globals()['final_net_as_receivables'],globals()['final_reac_receivables'] , globals()['final_ir_receivables'],globals()['final_cong_receivables'],  
             
@@ -519,8 +529,62 @@ def getLastDisbursedWk(request):
             ] , partial_dis_status,priority_list_sorted ,disbursed_weeks_lst , unique_wk_dict , nldc_split_qry ],safe=False)
 
     except Exception as e:
+      #print(e)
       return HttpResponse(extractdb_errormsg(e),status=404)
-    
+
+
+def transfertoLegacy(request):
+    try:
+        summary_data = json.loads(request.body)['disburse_summary']
+        to_be_transfer = json.loads(request.body)['transfer_to_legacy']
+        # get latest record from Disbursement Status
+
+        dis_status = list(DisbursementStatus.objects.filter(final_disburse=True).order_by('-Disbursed_date')[:1].all().values())
+        if len(dis_status):
+            data = dis_status[0]
+            data.pop('id', None)
+            intimate_to_NLDC = list(IntimateNLDC.objects.filter(is_used_indisbursement=False).order_by('-intimate_date')[:1].all().values())
+
+            #if isinstance(summary_data[0]['Total_amount_inpool'], (int, float, complex)):
+            #    total_amount_inpool =  summary_data[0]['Total_amount_inpool']
+            #else :
+            #    total_amount_inpool = 0
+
+            #if isinstance(summary_data[0]['Legacy_total'], (int, float, complex)):
+            #    legacy_total =  summary_data[0]['Legacy_total']
+            #else :
+            #    legacy_total = 0
+
+            #after_transfer = total_amount_inpool + legacy_total
+
+
+            if len(intimate_to_NLDC) :
+                data_to_nldc = intimate_to_NLDC[0]
+                if data_to_nldc['is_transferred'] :
+                    surplus_amt = data['Surplus_amt'] - to_be_transfer-data_to_nldc['transfer_amount']
+                    legacy_surplus_amt = data['legacy_surplus_amt'] + to_be_transfer
+                    IntimateNLDC.objects.filter(Q(is_transferred=True) & Q(is_used_indisbursement=False)).update(is_transferred = True ,is_used_indisbursement = True)
+                else :
+                    return JsonResponse({'status' : False , 'message' :'Please check intimated to NLDC, if anything pending IR should be transfered!! '} , safe=False)
+            else:
+                surplus_amt = data['Surplus_amt'] - to_be_transfer
+                legacy_surplus_amt = data['legacy_surplus_amt'] + to_be_transfer
+                
+            data['Disbursed_date'] = datetime.today().date()
+            data['Surplus_amt'] = surplus_amt
+            data['legacy_surplus_amt'] = legacy_surplus_amt
+            data['remarks'] = 'Transfered to Legacy'
+
+            DisbursementStatus.objects.create(**data)
+            # same way change Intimate NLDC table also
+            #IntimateNLDC.objects.filter( ( Q(is_transferred=False) & Q(is_used_indisbursement=False)) | (Q##(is_transferred=True) & Q(is_used_indisbursement=False)) ).update(
+            #    is_transferred = True ,
+            #    is_used_indisbursement = True
+            #)
+        return JsonResponse({'status' : True , 'message' :' Transferred to Legacy Successfully'} , safe=False)
+    except Exception as e:
+      return HttpResponse(extractdb_errormsg(e),status=404)
+  
 def getDisburseDetails(request):
     try:
         input_data=json.loads(request.body)
@@ -914,6 +978,8 @@ def getPaymentsConsideredForDisbursement(pool_acc,legacy_bills):
         elif pool_acc == 'Others':
             # Other Payments are approved and  considering in disbursement
             OtherPayments.objects.filter(Is_disbursed=False).update(Is_disbursed=True)
+        elif pool_acc == 'Shortfall':
+            ShortfallPayments.objects.filter(Is_disbursed = False).update(Is_disbursed=True)
             
         else:
             pass
@@ -984,8 +1050,8 @@ def finalDisbursement(request):
             dis_status_qry=DisbursementStatus.objects.filter(Disbursed_date__gt=last_dis_date_object)
         else:
             dis_status_qry=DisbursementStatus.objects.all()
-        
-        
+
+
         if len(dis_status_qry):
             dis_status=list(dis_status_qry.order_by('Disbursed_date').values('Disbursed_date','dsm','net_as','reac','ir','dsm_prevwk','net_as_prevwk','reac_prevwk','ir_prevwk','Surplus_amt'))
             
@@ -1002,17 +1068,18 @@ def finalDisbursement(request):
                     dis_status_prev_wk_legacy=list(DisbursementStatus.objects.filter(Disbursed_date=last_dis_date_object).values_list('legacy_surplus_amt',flat=True) )
 
                     prev_wk_amount_legacy = dis_status_prev_wk_legacy[0] if len(dis_status_prev_wk_legacy) else 0
-                    
+
                     if len(intimate_nldc_qry):
                         surplus_amount_qry=list(intimate_nldc_qry.values_list('amount_available','transfer_amount'))
                         surplus_amt=0
 
-                        dsm_paid_amount, reac_paid_amount, ir_paid_amount, net_as_paid_amount,interest_paid_amount,rev_paid_amount,cong_paid_amount,other_misc_amount = map(poolAccPaidAmount, keys)
+                        dsm_paid_amount, reac_paid_amount, ir_paid_amount, net_as_paid_amount,interest_paid_amount,rev_paid_amount,cong_paid_amount,other_misc_amount,shortfall_paid_amount = map(poolAccPaidAmount, keys)
 
-                        surplus_amt=dsm_paid_amount+reac_paid_amount+ir_paid_amount+net_as_paid_amount+interest_paid_amount+rev_paid_amount+cong_paid_amount+other_misc_amount                   
+                        surplus_amt=dsm_paid_amount+reac_paid_amount+ir_paid_amount+net_as_paid_amount+interest_paid_amount+rev_paid_amount+cong_paid_amount+other_misc_amount+shortfall_paid_amount                   
 
                         for vals in surplus_amount_qry:
                             surplus_amt+=vals[0]-vals[1]
+
 
                     else:
                         # get previous week amount from last disbursed date
@@ -1024,9 +1091,9 @@ def finalDisbursement(request):
                             prev_wk_amount = surplus_amt - revision_disbursed
                         else: prev_wk_amount = 0
   
-                        dsm_paid_amount, reac_paid_amount, ir_paid_amount, net_as_paid_amount,interest_paid_amount,rev_paid_amount,cong_paid_amount,other_misc_amount = map(poolAccPaidAmount, keys)
+                        dsm_paid_amount, reac_paid_amount, ir_paid_amount, net_as_paid_amount,interest_paid_amount,rev_paid_amount,cong_paid_amount,other_misc_amount,shortfall_paid_amount = map(poolAccPaidAmount, keys)
 
-                        surplus_amt=dsm_paid_amount+reac_paid_amount+ir_paid_amount+net_as_paid_amount+interest_paid_amount+rev_paid_amount+cong_paid_amount+other_misc_amount+prev_wk_amount
+                        surplus_amt=dsm_paid_amount+reac_paid_amount+ir_paid_amount+net_as_paid_amount+interest_paid_amount+rev_paid_amount+cong_paid_amount+other_misc_amount+prev_wk_amount+shortfall_paid_amount
                         
                     net_amount=surplus_amt-amount_disbursed_thisdate 
                     net_amount = net_amount if net_amount > 0 else 0
@@ -1036,7 +1103,7 @@ def finalDisbursement(request):
                     merged_accs=getMergedAccts()
                     result_accs=[acc for acc in all_pool_accs if acc not in merged_accs ]
                     pool_types = sorted(result_accs)
-                    
+
                     for p_type in pool_types:
                         filtered_df=dis_entities_df[dis_entities_df['pool_acctype']==p_type]
                         if p_type=='DSM':
@@ -1135,8 +1202,9 @@ def revokeDisbursement(request):
     try:
         in_data=json.loads(request.body)
         last_disbursed_date=datetime.strptime(in_data['last_disburse_date'],'%d-%m-%Y').date()
-        dis_status_qry=DisbursementStatus.objects.filter(Disbursed_date__gt=last_disbursed_date)
-        dis_entities=DisbursedEntities.objects.filter(disstatus_fk__Disbursed_date__gt=last_disbursed_date,payrcv='R')
+        
+        dis_status_qry=DisbursementStatus.objects.filter(Disbursed_date__gte=last_disbursed_date)
+        dis_entities=DisbursedEntities.objects.filter(disstatus_fk__Disbursed_date__gte=last_disbursed_date,payrcv='R')
 
         pool_acc_upper=in_data['selected_row']['label'].upper()
         # delete already temp disbursed weeks alse

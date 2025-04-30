@@ -34,6 +34,9 @@ from .finance_reports import *
 from .excess_fc import *
 from .mail import *
 from .reconciliation import *
+from .shortfall_bills import *
+from .scuc_cc import *
+from .user_recon import *
 
 regions=['Southern Region to Western Region', 'Western Region to Southern Region', 'Southern Region to Eastern Region', 'Eastern Region to Southern Region ']
 
@@ -60,6 +63,10 @@ def fetchSRPCBills(request):
             only_year=str(fin_year[:4])
             # letter date is to download .zip file from srpc website
             letter_date=(end_date+timedelta(days=1))
+            parts = fin_year.split('-')
+            prefix = parts[0][:2]  # '20'
+            next_year_suffix = parts[1]  # '25'
+            only_year2 = prefix + next_year_suffix
             
             file_start_date_str=start_date.strftime('%d')
             # this end date is for local folder
@@ -68,7 +75,7 @@ def fetchSRPCBills(request):
             # this name is to match srpc filename line 01-08jan24
 
             filename_end_date=end_date.strftime('%d')+str ( month_name_dict[end_date.strftime('%b').lower()] ) + str(end_date)[2:4]
-            
+
             path = "srpc_folder" + "\\"+fin_year+"\\Week_"+fin_year.replace('-','_') +"_Proof\\Week_no_"+str(week_no)+"_"+str(file_start_date_str)+"_"+str(file_end_date_str)
 
             if not os.path.exists(path):
@@ -76,12 +83,17 @@ def fetchSRPCBills(request):
             else:
                   # if folder already exists then return
                   return JsonResponse("Folder already exists in the location , Please check " + path ,safe=False)
+
+
             try :
                   # get only_year from current financial year
                   #-------------zip------------#
                   url2 = str("https://www.srpc.kar.nic.in/website/")+only_year+str("/commercial/")+str(letter_date.strftime('%d%m%y'))+str(".zip")
-                 
                   response = requests.get(url2,verify=False)
+                  if response.status_code == 404 :
+                        url2 = str("https://www.srpc.kar.nic.in/website/")+only_year2+str("/commercial/")+str(letter_date.strftime('%d%m%y'))+str(".zip")
+                        response = requests.get(url2,verify=False)
+
                   
                   # if response is empty then delete the created folder
                   file_path = path + '\\'+str(end_date)+".zip"
@@ -90,8 +102,12 @@ def fetchSRPCBills(request):
 
                   ###-----------DSM PDF----------------- #
                   url1 = str("https://www.srpc.kar.nic.in/website/")+only_year+str("/commercial/dsm")+file_start_date_str+"-"+filename_end_date+str(".pdf")
-                  
                   response1 = requests.get(url1,verify=False)
+                  if response1.status_code == 404 :
+                        url1 = str("https://www.srpc.kar.nic.in/website/")+only_year2+str("/commercial/dsm")+file_start_date_str+"-"+filename_end_date+str(".pdf")
+                        response1 = requests.get(url1,verify=False)
+                  
+                  
                   file_path1 = path + '\\dsm'+str(file_start_date_str)+"-"+str(filename_end_date)+".pdf"
                   with open(file_path1, 'wb') as file:
                         file.write(response1.content)
@@ -99,6 +115,11 @@ def fetchSRPCBills(request):
                   ###-----------RRAS PDF-------------#
                   url3 = str("https://www.srpc.kar.nic.in/website/")+only_year+str("/commercial/as")+file_start_date_str+"-"+filename_end_date+str(".pdf")
                   response2 = requests.get(url3,verify=False)
+                  if response2.status_code == 404 :
+                        url3 = str("https://www.srpc.kar.nic.in/website/")+only_year2+str("/commercial/as")+file_start_date_str+"-"+filename_end_date+str(".pdf")
+                        response2 = requests.get(url3,verify=False)
+
+                  
                   file_path2 = path + '\\rras'+str(file_start_date_str)+"-"+str(filename_end_date)+".pdf"
                   with open(file_path2, 'wb') as file:
                         file.write(response2.content)
@@ -107,6 +128,11 @@ def fetchSRPCBills(request):
                   ###-----------Reactive PDF-------------#
                   url4 = str("https://www.srpc.kar.nic.in/website/")+only_year+str("/commercial/reac")+file_start_date_str+"-"+filename_end_date+str(".pdf")
                   response3 = requests.get(url4,verify=False)
+                  if response3.status_code == 404 :
+                        url4 = str("https://www.srpc.kar.nic.in/website/")+only_year2+str("/commercial/reac")+file_start_date_str+"-"+filename_end_date+str(".pdf")
+                        response3 = requests.get(url4,verify=False)
+
+                  
                   file_path3 = path + '\\react'+str(file_start_date_str)+"-"+str(filename_end_date)+".pdf"
                   with open(file_path3, 'wb') as file:
                         file.write(response3.content)

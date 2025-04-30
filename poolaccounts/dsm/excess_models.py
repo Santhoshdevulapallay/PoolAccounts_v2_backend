@@ -17,11 +17,13 @@ class ExcessBaseModel(models.Model):
       Description=models.CharField(max_length=255,default=None,blank=True,null=True)
       Other_info=models.CharField(max_length=255,default=None,blank=True,null=True)
       Acc_Type=models.CharField(default=None,max_length=255,blank=True,null=True)
+      Disbursed_date = models.DateField(default=None)
       
       def __str__(self):
             return self.Fin_code
       
       class Meta:
+            managed = False # later change for migrations set to False
             db_table = 'excess_basemodel'
 
 class OtherPayments(models.Model):

@@ -12,25 +12,39 @@ from rest_framework.authtoken.models import Token
 from rest_framework import status
 from rest_framework.exceptions import ValidationError
 from django.contrib.auth import authenticate, login,logout
+from registration.models import Registration
 
+def checkEntity(username):
+    try:
+        is_reg_qry = Registration.objects.filter(username = username)
+        if is_reg_qry.count() > 0 :
+            fin_code , is_utility = is_reg_qry.values_list('fin_code' , flat=True)[0] , True 
+        else :
+           fin_code , is_utility = None ,False
+        return fin_code , is_utility
+    except Exception as e:
+        return None ,False
+    
 def login(request):
     try:
-        
         userdata=json.loads(request.body)
         serializer=LoginSerializer(data=userdata['formdata'])
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data['user']
-        
-        token, created = Token.objects.get_or_create(user=user)
         # actually here first_name is for Department (MO,FIN)
-        if user:
+        token, created = Token.objects.get_or_create(user=user)
+        if user: 
+            fin_code , is_utility = checkEntity(userdata['formdata']['username'])
+           
             return JsonResponse({
                 'status':True,
                 'token': token.key,
                 'user_id': user.pk,
                 'isSuperUser':user.is_superuser,
                 'userName':user.username,
-                'department':user.first_name
+                'department':user.first_name ,
+                'fin_code' : fin_code ,
+                'is_utility': is_utility
                 })
         else:
             return JsonResponse({'status':False})

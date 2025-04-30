@@ -31,7 +31,7 @@ from dsm.common import keys
 def getDisbursedStatus(model_obj_qry,fin_year,week_no,col_name):
       try:
             # status
-            mod_obj_query=model_obj_qry.objects.filter(Fin_year=fin_year,Week_no=week_no,PayableorReceivable='Receivable')
+            mod_obj_query=model_obj_qry.objects.filter(Fin_year=fin_year,Week_no=week_no,PayableorReceivable='Receivable',Effective_end_date__isnull=True)
             receivable_srpc=mod_obj_query.aggregate(total_amount=Coalesce(Sum('Final_charges'),0.0))
 
             actual_received=mod_obj_query.aggregate(total_amount=Coalesce(Sum(col_name),0.0))
@@ -40,6 +40,7 @@ def getDisbursedStatus(model_obj_qry,fin_year,week_no,col_name):
                   return True , 100
             else: 
                   percent_disbursed=int( (actual_received['total_amount']/receivable_srpc['total_amount'])*100 )
+                  #percent_disbursed = receivable_srpc['total_amount'] - actual_received['total_amount']
                   return False,percent_disbursed
 
       except Exception as e:
@@ -52,7 +53,7 @@ def getDashboardData(request):
             last_week_surplus_amt=last_week_surplus_qry[0]['Surplus_amt']
 
             # get last 5 weeeks
-            fin_weeks=list(YearCalendar.objects.filter(srpc_fetch_status=True,dsm_bills_uploaded_status=True,netas_bills_uploaded_status=True,reac_bills_uploaded_status=True).order_by('-id')[:8].values('fin_year','week_no','start_date','end_date'))
+            fin_weeks=list(YearCalendar.objects.filter(srpc_fetch_status=True,dsm_bills_uploaded_status=True,netas_bills_uploaded_status=True,reac_bills_uploaded_status=True).order_by('-id').values('fin_year','week_no','start_date','end_date'))
             all_status=[]
             for fw in fin_weeks:
                   all_status_dict={
@@ -81,16 +82,22 @@ def getDashboardData(request):
             # get the oustanding dues as on date
             final_outstanding_df=pd.DataFrame([])
             # to show in dashboard considering only DSM and REAC
-            for acc_type in ['DSM','REAC']:
+            for acc_type in ['DSM','REAC','NET_AS','Legacy','Shortfall']:
                   filtered_df,grouped_df=getOustandingdf(acc_type)
                   grouped_df['PoolAcc']=acc_type
-                  
                   final_outstanding_df=pd.concat([final_outstanding_df,grouped_df])
             
+            dsm_sum = final_outstanding_df[final_outstanding_df['PoolAcc']=='DSM']['Outstanding'].sum()
+            reac_sum = final_outstanding_df[final_outstanding_df['PoolAcc']=='REAC']['Outstanding'].sum()
+            netas_sum = final_outstanding_df[final_outstanding_df['PoolAcc']=='NET_AS']['Outstanding'].sum()
+            legacy_sum = final_outstanding_df[final_outstanding_df['PoolAcc']=='Legacy']['Outstanding'].sum()
+            last_st_upload = BankStatement.objects.values_list("ValueDate",flat=True).last().strftime("%d.%m.%Y")
+            shortfall_sum = final_outstanding_df[final_outstanding_df['PoolAcc']=='Shortfall']['Outstanding'].sum()
+            total = dsm_sum+reac_sum+netas_sum+legacy_sum+shortfall_sum
             # sort based on highest outstanding
             final_outstanding_df.sort_values('Outstanding',ascending=False, inplace=True)
 
-            return JsonResponse([all_status,last_week_surplus_amt,final_outstanding_df.to_dict(orient='records')],safe=False)
+            return JsonResponse([all_status,last_week_surplus_amt,final_outstanding_df.to_dict(orient='records'),dsm_sum,reac_sum,netas_sum,last_st_upload,legacy_sum,total,shortfall_sum],safe=False)
 
       except Exception as e:
             

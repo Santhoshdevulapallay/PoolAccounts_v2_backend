@@ -1,6 +1,5 @@
 from django.db import models
 from django.utils import timezone
-# Create your models here.
 
 
 
@@ -22,7 +21,7 @@ class Registration(models.Model):
       is_nclt=models.BooleanField(default=None,blank=True,null=True)
       filename=models.TextField(default=None,blank=True,null=True)
       remarks=models.TextField(default=None,blank=True,null=True)
-
+      username = models.CharField(max_length=15,default=None,blank=True,null=True)
       def __str__(self):
             return self.fees_charges_name
       
@@ -31,6 +30,16 @@ class Registration(models.Model):
             db_table = 'registration'
             unique_together=['fin_code','end_date']
 
+class RLDCEmployees(models.Model):
+      empname = models.CharField(max_length= 255 , default=None)
+      empdept = models.CharField(max_length=50 , default=None)
+      empid = models.IntegerField(default=None ,primary_key=True)
+      emp_signature = models.CharField(max_length=255 , default=None , blank=True , null=True)
+      emp_designation = models.CharField(max_length=50 , default=None)
+
+      class Meta:
+            db_table = 'rldc_employees'
+           
 class BankDetails(models.Model):
       fin_code_fk=models.ForeignKey(Registration,on_delete=models.SET_NULL,null=True)
       bank_account=models.CharField(default=None,max_length=25 )
@@ -177,3 +186,21 @@ class PoolDuedates(models.Model):
       class Meta:
             managed = True
             db_table = 'duedates'
+
+class AuthToken(models.Model):
+      key = models.CharField(max_length=40, unique=True)
+      user_id = models.IntegerField(default= None)  # Link to Django's User model
+      created = models.DateTimeField(auto_now_add=True)
+    
+      class Meta:
+            managed = False
+            db_table = 'authtoken_token'
+
+
+class AuthUser(models.Model):
+      username = models.CharField(max_length=255 )
+      id = models.IntegerField(default= None , primary_key=True)  # Link to Django's User model
+     
+      class Meta:
+            managed = False
+            db_table = 'auth_user'

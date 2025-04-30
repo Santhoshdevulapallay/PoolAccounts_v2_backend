@@ -11,6 +11,7 @@ from datetime import timedelta , datetime
 from fiscalyear import *
 import pandas as pd
 from dsm.models import TemporaryInterRegional , TemporaryMatched
+from registration.custom_paths import get_current_financial_year
 
 def getFinCodes():
       try:
@@ -28,6 +29,14 @@ def getFCNames():
       except Exception as e:
             return HttpResponse(extractdb_errormsg(e),status=404)
       
+def getFCName(fin_code):
+      try:
+            fc_name_lst=list(Registration.objects.filter(end_date__isnull=True ,fin_code = fin_code ).values_list('fees_charges_name' , flat=True))
+            return fc_name_lst[0] if len(fc_name_lst) else None
+
+      except Exception as e:
+            return None 
+         
 def getEntityNames():
       try:
             dsm_names=list(Registration.objects.filter(end_date__isnull=True).order_by('dsm_name').values('fin_code','dsm_name'))
@@ -35,7 +44,15 @@ def getEntityNames():
       
       except Exception as e:
             return HttpResponse(extractdb_errormsg(e),status=404)
+
+def getFinFCNames(request):
+      try:
+            fin_fc_names = getFCNames()
+            return JsonResponse(fin_fc_names,safe=False)
       
+      except Exception as e:
+            return HttpResponse(extractdb_errormsg(e),status=404)
+          
 def getRegisteredEntities(request):
       try:
             entities=list(Registration.objects.filter(end_date__isnull=True).order_by('fin_code').all().values())
@@ -68,8 +85,13 @@ def fetchPoolAcctsEntities(request):
 
 def fetchedWeekFiles(request):
       try:
+            #today = datetime.date.today()
+            #if today.month == 4:
+            #      current_financial_year = str(today.year - 1) + "-" + str(today.year)[2:]
+            current_financial_year = '2025-26'
+            # current_financial_year = get_current_financial_year()
             # get the latest 3 fetched weeks data  bills_uploaded_status=True
-            latest_fetched_list=list(YearCalendar.objects.filter(fin_year=current_financial_year,srpc_fetch_status=True  ).order_by('-week_no')[:3].values('week_no','fetched_time'))
+            latest_fetched_list=list(YearCalendar.objects.filter(srpc_fetch_status=True).order_by('-end_date')[:3].values('week_no','fetched_time'))
 
             already_files_fetched_wk =list(YearCalendar.objects.filter(fin_year=current_financial_year,srpc_fetch_status=True ).order_by('week_no').values_list('week_no' , flat=True))
 
