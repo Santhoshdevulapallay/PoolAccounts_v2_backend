@@ -159,6 +159,54 @@ def fetchSRPCBills(request):
             shutil.rmtree(path)
             return HttpResponse(extractdb_errormsg(e),status=404)
 
+def uploadRPCBillManually(request):
+      try:
+            disable_warnings(InsecureRequestWarning)
+            # if multiple files uploads like ds, sras , mbas ..
+            files = request.FILES.getlist('files') 
+            fin_year = ast.literal_eval(request.POST['fin_year']) 
+            week_no = ast.literal_eval(request.POST['wk_no']) 
+            year_qry=YearCalendar.objects.filter(fin_year= fin_year,week_no=week_no )
+
+            if year_qry.count() > 0 :
+                  if year_qry[0].srpc_fetch_status:
+                       return JsonResponse("Already Uploaded , Please check",safe=False) 
+                  start_date=year_qry[0].start_date
+            else:
+                  return JsonResponse(f"Start date not found for the week {week_no} ",safe=False)
+            
+            end_date=year_qry[0].end_date
+            
+            file_start_date_str=start_date.strftime('%d')
+            # this end date is for local folder
+            file_end_date_str=end_date.strftime('%d%B%y') 
+            
+            path = "srpc_folder" + "\\"+fin_year+"\\Week_"+fin_year.replace('-','_') +"_Proof\\Week_no_"+str(week_no)+"_"+str(file_start_date_str)+"_"+str(file_end_date_str) +'\\Zip_Data\\' 
+
+            if not os.path.exists(path):
+                  os.makedirs(path)
+            else:
+                  # if folder already exists then return
+                  return JsonResponse("Folder already exists in the location , Please check " + path ,safe=False)
+            
+            for fl in files:
+                  file_path = path + str(fl.name)
+                  with open(file_path, 'wb+') as destination:
+                        for chunk in fl.chunks():
+                              destination.write(chunk)
+
+            # Here update the all files uploaded path
+            # Remove '\Zip_Data\' from the path because it is adding while validating the bill
+            cleaned_path = path.replace('\\Zip_Data\\', '\\')
+            year_qry.update(
+                  srpc_fetch_status=True,
+                  fetched_time=datetime.now(),
+                  folder_path=cleaned_path
+            )
+            return JsonResponse('Uploaded Successfully', safe=False)
+      except Exception as e:
+            return HttpResponse(extractdb_errormsg(e),status=404)
+   
 def srpcFileStatus(request):
       try:
             formdata=json.loads(request.body)
