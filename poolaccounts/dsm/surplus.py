@@ -139,7 +139,10 @@ def transferSurplus(request):
 
         # Accessing and processing the 'row' data, which is a JSON string
         intimated_rows = json.loads(request.POST.get('row'))
-        
+
+        dis_status = list( DisbursementStatus.objects.filter(final_disburse=True).order_by('-Disbursed_date')[:1].values())
+
+        surplus_amount = int(intimated_rows[0]['amount_available']) - int(tobe_transferred)
         for row in intimated_rows:
             IntimateNLDC.objects.filter(id=row['id']).update(
                 is_transferred=True,
@@ -149,8 +152,22 @@ def transferSurplus(request):
                 wr=wr,
                 ner=ner,
                 psdf=psdf,
-                file_path=all_file_paths
+                file_path=all_file_paths,
+                is_used_indisbursement = True,
             )
+
+
+        remarks_1 = dis_status[0]['remarks']
+        if remarks_1 is None:
+            remarks_1 = ' '
+        else :
+            remarks_1
+        
+        DisbursementStatus.objects.filter(id= dis_status[0]['id']).update(
+            Surplus_amt = surplus_amount, 
+            remarks = remarks_1 +" _Amount of Rs."+ tobe_transferred+" for inter-regional on "+ datetime.today().strftime("%d-%m-%Y")
+            )
+
         return getIntimateSummary(request)
     
     except Exception as e:

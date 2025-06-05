@@ -48,6 +48,7 @@ urlpatterns = [
       # disbursement
       path('get_lastdisbursed_wk/', views.getLastDisbursedWk),
       path('transfer_to_legacy/', views.transfertoLegacy),
+      path('transfer_to_main/', views.transfertoMain),
       path('get_disburse_details/', views.getDisburseDetails),
       # path('proceed_disbursement/', views.proceedDisbursement),
       path('store_disbursedvalues/', views.storeDisbursedValues),
@@ -75,7 +76,7 @@ urlpatterns = [
       # Revision Module
       path('get_max_revision_weekdates/', views.getWeekMaxRevision),
       path('get_revision_checkbill/', views.getRevisionCheckBills),
-       path('get_revision_checkbill_userentry/', views.getRevisionCheckBillsUserEntry),
+      path('get_revision_checkbill_userentry/', views.getRevisionCheckBillsUserEntry),
       # not the final bill but individual bills like week wise and update in basemodel
       path('save_revision_bill/', views.saveRevisionBill),
       path('get_all_revision_dates/', views.getAllRevisionDates),
