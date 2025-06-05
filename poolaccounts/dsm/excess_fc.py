@@ -13,6 +13,7 @@ from django.db.models import F ,Count ,Sum , Q
 
 def getExcessSummary(request):
     try:
+
         excess_summary=list(ExcessBaseModel.objects.filter(Is_disbursed=False,Acc_Type='EXCESS').all().values())
         fees_charges_summary=list(ExcessBaseModel.objects.filter(Is_disbursed=False,Acc_Type='F&C').all().values())
 
@@ -85,7 +86,7 @@ def generateExcessIOM(request):
                     zip_file.writestr(os.path.basename(normalized_path), file_content)
 
                 # once document generated update Is_disbursed status=True
-                ExcessBaseModel.objects.filter(id=ent['id']).update(Is_disbursed=True,Fully_disbursed='C')
+                ExcessBaseModel.objects.filter(id=ent['id']).update(Is_disbursed=True,Fully_disbursed='C',disbursed_date=datetime.today())
 
         # Seek to the beginning of the in-memory file
         zip_buffer.seek(0)

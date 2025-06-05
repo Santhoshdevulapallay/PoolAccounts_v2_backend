@@ -34,7 +34,7 @@ class REACBaseModel(models.Model):
       
       class Meta:
             db_table = 'reac_basemodel'
-            unique_together=['Fin_year','Week_no','Entity']
+            unique_together=['Fin_year','Week_no','Entity','Revision_no','Final_charges']
 
 
 class REACPayments(models.Model):

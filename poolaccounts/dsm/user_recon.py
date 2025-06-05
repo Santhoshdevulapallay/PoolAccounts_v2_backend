@@ -4,7 +4,7 @@ import json
 from .reconciliation import *
 import os
 import math
-from datetime import date
+from datetime import date,timedelta
 from fpdf import FPDF
 from .common import format_indian_currency_withoutsymbol
 from registration.fetch_data import getFCName
@@ -66,7 +66,7 @@ def getLastReconSubmits(request):
 def reco_for_user(fin_code,startdate,enddate,acc_type):
     try:
         if acc_type == 'DSM':
-            basemodel_obj = DSMBaseModel.objects.filter(Q(Letter_date__range=[startdate,enddate]))
+            basemodel_obj = DSMBaseModel.objects.filter(Q(Letter_date__range=[startdate,enddate],Revision_no =0))
 
             basemodel_qry = basemodel_obj.filter(Q(PayableorReceivable='Payable',payments__Paid_date__isnull=True ))
             basemodel_qry_rcv = basemodel_obj.filter(Q(PayableorReceivable='Receivable',dsmreceivables__disbursed_date__isnull=True ))
@@ -77,7 +77,7 @@ def reco_for_user(fin_code,startdate,enddate,acc_type):
             receivables_qry = DSMReceivables.objects.filter(disbursed_date__range=[startdate,enddate])
 
         elif acc_type == 'REAC':
-            basemodel_obj = REACBaseModel.objects.filter(Q(Letter_date__range=[startdate,enddate]))
+            basemodel_obj = REACBaseModel.objects.filter(Q(Letter_date__range=[startdate,enddate],Revision_no=0))
 
             basemodel_qry = basemodel_obj.filter(Q(PayableorReceivable='Payable',reacpayments__Paid_date__isnull=True ))
 
@@ -91,7 +91,7 @@ def reco_for_user(fin_code,startdate,enddate,acc_type):
             receivables_qry = REACReceivables.objects.filter(disbursed_date__range=[startdate,enddate])
 
         elif acc_type == 'NET_AS':
-            basemodel_obj = NetASBaseModel.objects.filter(Q(Letter_date__range=[startdate,enddate]))
+            basemodel_obj = NetASBaseModel.objects.filter(Q(Letter_date__range=[startdate,enddate],Revision_no =0))
 
             basemodel_qry = basemodel_obj.filter(Q(PayableorReceivable='Payable',netaspayments__Paid_date__isnull=True ))
 
@@ -103,16 +103,16 @@ def reco_for_user(fin_code,startdate,enddate,acc_type):
 
             payments_model_qry = NetASPayments.objects.filter(Paid_date__range=[startdate,enddate])
             receivables_qry = NetASReceivables.objects.filter(disbursed_date__range=[startdate,enddate])
-        
-        all_paid_inrange_df = pd.DataFrame(payments_model_qry.filter(paystatus_fk__Fin_code=fin_code).values('paystatus_fk__Fin_year','paystatus_fk__Week_no','paystatus_fk__Final_charges','paystatus_fk__Letter_date','Paid_date','Paid_amount') , columns = ['paystatus_fk__Fin_year','paystatus_fk__Week_no','paystatus_fk__Final_charges','paystatus_fk__Letter_date','Paid_date','Paid_amount'])
+
+        all_paid_inrange_df = pd.DataFrame(payments_model_qry.filter(paystatus_fk__Fin_code=fin_code).values('paystatus_fk__Week_no','paystatus_fk__Week_startdate','paystatus_fk__Week_enddate','paystatus_fk__Final_charges','paystatus_fk__Letter_date','Paid_date','Paid_amount') , columns = ['paystatus_fk__Week_no','paystatus_fk__Week_startdate','paystatus_fk__Week_enddate','paystatus_fk__Final_charges','paystatus_fk__Letter_date','Paid_date','Paid_amount'])
         # calculate outstanding amount
         all_paid_inrange_df['Outstanding'] = all_paid_inrange_df['paystatus_fk__Final_charges']  - all_paid_inrange_df['Paid_amount'] 
         all_paid_inrange = all_paid_inrange_df.values.tolist()
         all_paid_inrange_list=[list(ele) for ele in all_paid_inrange]
 
-        not_paid_inrange=list(basemodel_qry.filter(Fin_code=fin_code).values_list('Fin_year','Week_no','Final_charges','Letter_date'))
+        not_paid_inrange=list(basemodel_qry.filter(Fin_code=fin_code).values_list('Week_no','Week_startdate','Week_enddate','Final_charges','Letter_date'))
 
-        paid_outrange = list(basemodel_qry_next_pay.filter(Fin_code=fin_code).values_list('Fin_year','Week_no','Final_charges','Letter_date'))
+        paid_outrange = list(basemodel_qry_next_pay.filter(Fin_code=fin_code).values_list('Week_no','Week_startdate','Week_enddate','Final_charges','Letter_date'))
         not_paid_inrange_list=[list(ele) for ele in not_paid_inrange]
         paid_outrange_list = [list(ele) for ele in paid_outrange]
         not_paid_inrange_list =  not_paid_inrange_list+paid_outrange_list
@@ -132,27 +132,28 @@ def reco_for_user(fin_code,startdate,enddate,acc_type):
                 excess.append(0)
 
             all_paid_inrange_list+= excess_payments_list
+
         
-        
-        all_rcv_inrange_df=pd.DataFrame(receivables_qry.filter(rcvstatus_fk__Fin_code=fin_code).values('rcvstatus_fk__Week_no','rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date','rcvstatus_fk__Final_charges','Disbursed_amount','disbursed_date') , columns=['rcvstatus_fk__Week_no','rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date','rcvstatus_fk__Final_charges','Disbursed_amount','disbursed_date'])
+
+        all_rcv_inrange_df=pd.DataFrame(receivables_qry.filter(rcvstatus_fk__Fin_code=fin_code,rcvstatus_fk__Revision_no =0).values('rcvstatus_fk__Week_no','rcvstatus_fk__Week_startdate','rcvstatus_fk__Week_enddate','rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date','rcvstatus_fk__Final_charges','Disbursed_amount','disbursed_date') , columns=['rcvstatus_fk__Week_no','rcvstatus_fk__Week_startdate','rcvstatus_fk__Week_enddate','rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date','rcvstatus_fk__Final_charges','Disbursed_amount','disbursed_date'])
 
         all_rcv_inrange_df['rcvstatus_fk__Letter_date'] = pd.to_datetime(all_rcv_inrange_df['rcvstatus_fk__Letter_date'])
         start_date = pd.to_datetime(startdate)
 
         all_rcv_inrange_df.loc[all_rcv_inrange_df['rcvstatus_fk__Letter_date'] < start_date, 'rcvstatus_fk__Final_charges'] = 0
 
-        all_rcv_outrange_df=pd.DataFrame(basemodel_qry_rcv.filter(Fin_code=fin_code).values('Week_no','Letter_date','Disbursement_date','Final_charges') , columns=['Week_no','Letter_date','Disbursement_date','Final_charges'])
+        all_rcv_outrange_df=pd.DataFrame(basemodel_qry_rcv.filter(Fin_code=fin_code).values('Week_no','Week_startdate','Week_enddate','Letter_date','Disbursement_date','Final_charges') , columns=['Week_no','Week_startdate','Week_enddate','Letter_date','Disbursement_date','Final_charges'])
         all_rcv_outrange_df['Disbursed_amount'] = 0
 
         all_rcv_outrange_df['disbursed_date'] = pd.NaT
 
-        all_rcv_out_next_df = pd.DataFrame(basemodel_qry_next_rcv.filter(Fin_code=fin_code).values('Week_no','Letter_date','Disbursement_date','Final_charges') , columns=['Week_no','Letter_date','Disbursement_date','Final_charges'])
+        all_rcv_out_next_df = pd.DataFrame(basemodel_qry_next_rcv.filter(Fin_code=fin_code).values('Week_no','Week_startdate','Week_enddate','Letter_date','Disbursement_date','Final_charges') , columns=['Week_no','Week_startdate','Week_enddate','Letter_date','Disbursement_date','Final_charges'])
         all_rcv_out_next_df['Disbursed_amount'] = 0
 
         all_rcv_out_next_df['disbursed_date'] = pd.NaT
                 
-        all_rcv_outrange_df.columns = ['rcvstatus_fk__Week_no', 'rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date', 'rcvstatus_fk__Final_charges', 'Disbursed_amount', 'disbursed_date']
-        all_rcv_out_next_df.columns = ['rcvstatus_fk__Week_no', 'rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date', 'rcvstatus_fk__Final_charges', 'Disbursed_amount', 'disbursed_date']
+        all_rcv_outrange_df.columns = ['rcvstatus_fk__Week_no','rcvstatus__Week_startdate','rcvstatus__Week_enddate', 'rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date', 'rcvstatus_fk__Final_charges', 'Disbursed_amount', 'disbursed_date']
+        all_rcv_out_next_df.columns = ['rcvstatus_fk__Week_no','rcvstatus__Week_startdate','rcvstatus__Week_enddate', 'rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date', 'rcvstatus_fk__Final_charges', 'Disbursed_amount', 'disbursed_date']
         all_rcv_outrange_df['rcvstatus_fk__Letter_date'] = pd.to_datetime(all_rcv_outrange_df['rcvstatus_fk__Letter_date'])
         all_rcv_out_next_df['rcvstatus_fk__Letter_date'] = pd.to_datetime(all_rcv_out_next_df['rcvstatus_fk__Letter_date'])
 
@@ -171,7 +172,7 @@ def reco_for_user(fin_code,startdate,enddate,acc_type):
         # calculate Outstanding amount also
         temp_rcv_inrange_df['Outstanding'] = temp_rcv_inrange_df['rcvstatus_fk__Final_charges'] - temp_rcv_inrange_df['Disbursed_amount']
 
-        all_rcv_inrange_list = temp_rcv_inrange_df.sort_values(by='rcvstatus_fk__Letter_date').reset_index(drop=True).values.tolist()
+        all_rcv_inrange_list = temp_rcv_inrange_df.sort_values(by='rcvstatus_fk__Letter_date').reset_index(drop=True).values.tolist()    
         
         return all_paid_inrange_list,all_rcv_inrange_list
     except Exception as e:
@@ -244,7 +245,7 @@ def addSignBottom(pdf , img_path , entity_name , authroizedname):
         text_y = img_y + signature_height + 5  # Adjust gap if needed
 
         # Set font
-        pdf.set_font("Times", "BI" ,size=12)
+        pdf.set_font("Arial", "BI" ,size=12)
 
         # Left-aligned entity name
         pdf.text(x=10, y=text_y, txt=f"( {entity_name} )")  # 10mm is typical left margin
@@ -254,21 +255,65 @@ def addSignBottom(pdf , img_path , entity_name , authroizedname):
         right_text_width = pdf.get_string_width(right_text)
         right_margin = 10  # 10mm from right edge
         pdf.text(x=pdf.w - right_text_width - right_margin, y=text_y, txt=right_text)
-
+        pdf.set_font("Arial", "B" ,size=10)
         return pdf
     except:
         return pdf
 
 def Tableheader(pdf , table_header):
     try:
-        pdf.set_font("Courier", "BU", 16)
+        pdf.set_font("Times", "BU", 16)
         pdf.cell(0, 10, table_header, ln=True, align="C")
         return pdf
     
     except:
         return pdf
+    
+def print_table_with_wrapped_first_col(pdf, headers, data_rows, col_widths, max_height, line_height,authorized_img_path,entity_fc_name):
+    
+    def print_header():
+        pdf.set_font("Arial", 'B', 10)
+        pdf.set_fill_color(200, 220, 255)  # Light blue header
+        for header, width in zip(headers, col_widths):
+            pdf.cell(width, line_height * 2, header, border=1, align='C', fill=True)
+        pdf.ln()
+
+    # Print initial header
+    print_header()
+    addSignBottom(pdf , authorized_img_path , entity_fc_name,"Praharsha Korangi (Dy. Manager)")
+    
+
+    pdf.set_font("Arial", 'B', 10)
+
+    for row in data_rows:
+        # Step 1: compute wrapped lines for first column
+        first_col_text = str(row[0])
+        first_col_width = col_widths[0]
+        str_width = pdf.get_string_width(first_col_text)
+        num_lines = int(str_width / (first_col_width - 2)) + 1
+        row_height = line_height * num_lines
+
+        # Step 2: page break check
+        if pdf.get_y() + row_height > max_height:
+            pdf.add_page(orientation='L')
+            print_header()
+            addSignBottom(pdf , authorized_img_path , entity_fc_name,"Praharsha Korangi (Dy. Manager)")
+
+        # Step 3: print first column (wrapped)
+        x_start = pdf.get_x()
+        y_start = pdf.get_y()
+        pdf.multi_cell(first_col_width, line_height, first_col_text, border=1, align='C')
+
+        # Step 4: print other columns
+        pdf.set_xy(x_start + first_col_width, y_start)
+        for datum, width in zip(row[1:], col_widths[1:]):
+            pdf.cell(width, row_height, str(datum), border=1, align='C')
+    
+        # Step 5: move to next line
+        pdf.ln(row_height)
+
        
-def ReconPDF(start_date, end_date, in_data , payable_data , receivable_data):
+def ReconPDF(start_date, end_date, in_data , payable_data , receivable_data,opening_balance,closing_balance):
     try:
         fin_code = in_data['fincode']
         fin_year = in_data['formdata']['fin_year']
@@ -343,8 +388,8 @@ def ReconPDF(start_date, end_date, in_data , payable_data , receivable_data):
         # Move cursor down slightly below image
         pdf.set_y(img_y + signature_height + 1)
 
-        pdf.cell(0, 10, "C Rethi Nair", ln=1, align='R')
-        pdf.cell(0, 10, "General Manager (MO),", ln=1, align='R')
+        pdf.cell(0, 10, "S Suresh Raj", ln=1, align='R')
+        pdf.cell(0, 10, "Deputy General Manager (MO),", ln=1, align='R')
         
         # bottom copy to
         pdf.set_font("Times", "BU", 9)
@@ -362,46 +407,45 @@ def ReconPDF(start_date, end_date, in_data , payable_data , receivable_data):
         # Define column widths to fill full width
         col1_width = page_width * 0.8  # 70% for label
         col2_width = page_width * 0.2  # 30% for value
+
         # Create the row
         pdf.set_font("Times", "B" , 10)
         pdf.cell(col1_width, 9, f'Opening balance as on {start_date.strftime("%d-%m-%Y")}',align = 'C' , border=1)
-        pdf.cell(col2_width, 9, "10,000,00", border=1,align = 'C' , ln=1)
+        pdf.cell(col2_width, 9,f'{opening_balance}', border=1,align = 'C' , ln=1)
         
         # ************************* Payable  Table ****************
        
         pdf = Tableheader(pdf , "Payable To Pool ")
         pdf.set_font("Times","B" , 10)
         # Define your column headers and column widths
-        headers = ['Fin Year' ,'Week No' ,'Final Charges(*Rs)' ,'Letter Date' ,'Paid Date' ,'Paid Amount(*Rs)' ,'Outstanding(*Rs)']
+        headers = ['Week No' ,'Final Charges(*Rs)' ,'Letter Date' ,'Paid Date' ,'Paid Amount(*Rs)' ,'Outstanding(*Rs)']
         num_cols = len(headers)
         # Calculate full usable width
         usable_width = pdf.w - 2 * pdf.l_margin
         # Divide width equally across all columns (or customize as needed)
         col_widths = [usable_width / num_cols] * num_cols
         # Print header row
-        for header, width in zip(headers, col_widths):
-            pdf.cell(width, 10, header, border=1, align='C')
-        pdf.ln()
+        #for header, width in zip(headers, col_widths):
+        #    pdf.cell(width, 10, header, border=1, align='C')
+        #pdf.ln()
         
-        pdf.set_font("Courier","" , 12)
+        #pdf.set_font("Courier","" , 12)
         # Add table rows
-        for row in payable_data:
-            if pdf.get_y() + line_height > max_height:
-                # Add signature at bottom before page break
-                pdf = addSignBottom(pdf, authorized_img_path, entity_fc_name, "Praharsha Korangi (Dy. Manager)")
-                # page reached the end so add new page and add payable headers also 
-                pdf.add_page(orientation='L')
-                pdf = Tableheader(pdf , "Payable To Pool")
-                pdf.set_font("Times","B" , 10)
-                for header, width in zip(headers, col_widths):
-                    pdf.cell(width, 10, header, border=1, align='C')
-                pdf.set_font("Courier","" , 12)
-        
-            for datum, width in zip(row, col_widths):
-                pdf.cell(width, line_height, str(datum), border=1, align='C')
-            pdf.ln()
- 
-        pdf = addSignBottom(pdf , authorized_img_path , entity_fc_name,"Praharsha Korangi (Dy. Manager)")
+        #for row in payable_data:
+        #    if pdf.get_y() + line_height > max_height:
+        #        # Add signature at bottom before page break
+        #        pdf = addSignBottom(pdf, authorized_img_path, entity_fc_name, "Praharsha Korangi (Dy. Manager)")
+        #        # page reached the end so add new page and add payable headers also 
+        #        pdf.add_page(orientation='L')
+        #        pdf = Tableheader(pdf , "Payable To Pool")
+        #        pdf.set_font("Times","B" , 10)
+        #        for header, width in zip(headers, col_widths):
+        #            pdf.cell(width, 10, header, border=1, align='C')
+        #        pdf.set_font("Times","" , 12)
+
+        print_table_with_wrapped_first_col(pdf, headers, payable_data, col_widths, max_height, line_height,authorized_img_path,entity_fc_name)
+
+        #pdf = addSignBottom(pdf , authorized_img_path , entity_fc_name,"Praharsha Korangi (Dy. Manager)")
         # **************************** (Page 3)Receivable  Table ****************
         # break the page
         pdf.add_page(orientation='L') 
@@ -409,33 +453,39 @@ def ReconPDF(start_date, end_date, in_data , payable_data , receivable_data):
 
         pdf.set_font("Times","B" , 12)
         # Define your column headers and column widths
-        headers1= ['Week No' ,'Letter Date' ,'Final Charges(*Rs)' ,'Disbursed Amount(*Rs)','Disbursed Date']
+        headers1= ['Week No' ,'Letter Date' ,'Final Charges(*Rs)' ,'Disbursed Amount(*Rs)','Disbursed Date','Outstanding (Rs)']
         num_cols = len(headers1)
         # Divide width equally across all columns (or customize as needed)
         col_widths1 = [usable_width / num_cols] * num_cols
 
         # Print header row
-        for header, width in zip(headers1, col_widths1):
-            pdf.cell(width, 10, header, border=1, align='C')
-        pdf.ln()
+        #for header, width in zip(headers1, col_widths1):
+        #    pdf.cell(width, 10, header, border=1, align='C')
+        #pdf.ln()
         
-        pdf.set_font("Courier","" , 12)
+        #pdf.set_font("Courier","" , 12)
         # Add table rows
-        for row in receivable_data:
-            if pdf.get_y() + line_height > max_height:
-                # Add signature at bottom before page break
-                pdf = addSignBottom(pdf, authorized_img_path, entity_fc_name, "Praharsha Korangi (Dy. Manager)")
-                pdf.add_page(orientation='L')
-                pdf = Tableheader(pdf , "Receivable From Pool ")
-                pdf.set_font("Times","B" , 10)
-                for header, width in zip(headers1, col_widths1):
-                    pdf.cell(width, 10 , header, border=1, align='C')
-                pdf.set_font("Courier","" , 12)
+        #for row in receivable_data:
+        #    if pdf.get_y() + line_height > max_height:
+        #        # Add signature at bottom before page break
+        #        pdf = addSignBottom(pdf, authorized_img_path, entity_fc_name, "Praharsha Korangi (Dy. Manager)")
+        #        pdf.add_page(orientation='L')
+        #        pdf = Tableheader(pdf , "Receivable From Pool ")
+        #        pdf.set_font("Times","B" , 10)
+        #        for header, width in zip(headers1, col_widths1):
+        #            pdf.cell(width, 10 , header, border=1, align='C')
+        #        pdf.set_font("Courier","" , 12)
 
-            for datum, width in zip(row, col_widths1):
-                pdf.cell(width, line_height, str(datum), border=1, align='C')
-            pdf.ln()
-        pdf = addSignBottom(pdf , authorized_img_path , entity_fc_name,"Praharsha Korangi (Dy. Manager)")
+        #    for datum, width in zip(row, col_widths1):
+        #        pdf.cell(width, line_height, str(datum), border=1, align='C')
+        #    pdf.ln()
+        print_table_with_wrapped_first_col(pdf, headers1, receivable_data, col_widths, max_height, line_height,authorized_img_path,entity_fc_name)
+        pdf.ln()
+        # Create the row
+        pdf.set_font("Times", "B" , 10)
+        pdf.cell(col1_width, 11, f'Closing balance in Rs. as on {end_date.strftime("%d-%m-%Y")}',align = 'C' , border=1)
+        pdf.cell(col2_width, 11, f'{closing_balance}', border=1,align = 'C' , ln=1)
+        #pdf = addSignBottom(pdf , authorized_img_path , entity_fc_name,"Praharsha Korangi (Dy. Manager)")
         # ************************** Last Page ***********************
         # Finally add a remarks 
         pdf.add_page(orientation='L') 
@@ -469,7 +519,6 @@ def generateReconPDF(request):
         fin_year = in_data['formdata']['fin_year']
         quarter = in_data['formdata']['quarter']
         acc_type = in_data['formdata']['acc_type']
-        
         if not checkBillsNotified(acc_type , fin_year , quarter):
             return HttpResponse( 'Bills not notified ', status = 404)
         
@@ -487,29 +536,76 @@ def generateReconPDF(request):
             return FileResponse(open(pdf_path[0],'rb'),content_type='application/pdf')
             
         all_payable_lst , all_receivable_lst = reco_for_user(fin_code,start_date,end_date,acc_type)
-        
+        o_b = ReconLastQuarterBalance.objects.filter(Fin_code = fin_code, Acc_type =acc_type ,as_on_date = start_date-timedelta(days=1)).values()
+        df_o_b = pd.DataFrame.from_records(o_b)
+        import pdb
+        pdb.set_trace()
         # convert Payable List to dataframe and do some modifications
         payable_df = pd.DataFrame(all_payable_lst)
-        payable_df.fillna('' , inplace=True)
-        payable_df[3] = pd.to_datetime(payable_df[3]).dt.strftime('%d-%m-%Y')
-        payable_df[4] = pd.to_datetime(payable_df[4]).dt.strftime('%d-%m-%Y')
-        payable_df[2]=payable_df[2].apply(lambda x:format_indian_currency_withoutsymbol(x)) #final charges
-        payable_df[5]=payable_df[5].apply(lambda x:format_indian_currency_withoutsymbol(x)) #paid amount
-        payable_df[6]=payable_df[6].apply(lambda x:format_indian_currency_withoutsymbol(x)) #outstanding
         
+        for i in range(0,payable_df.shape[0]):
+            payable_df.at[i,0] = "Wk " + str(payable_df.at[i,0])+"( "+payable_df.at[i,1].strftime('%d-%m-%Y')+" to "+payable_df.at[i,2].strftime('%d-%m-%Y')+" )"
+        payable_df = payable_df[[0,3,4,5,6,7]]
+        payable_df.columns = [0,1,2,3,4,5]
+        payable_df = payable_df.sort_values(by=payable_df.columns[2])
+
+        payable_df[5] = payable_df[1] - payable_df[4]
+        if len(payable_df) :
+            payable_df.at[len(payable_df),0] = 'TOTAL'
+            payable_df.at[len(payable_df)-1,1] = payable_df[1].sum()
+            payable_df.at[len(payable_df)-1,4] = payable_df[4].sum()
+            payable_df.at[len(payable_df)-1,5] = payable_df[5].sum()
+
+
+        payable_df.fillna('' , inplace=True)
+        total1 = payable_df[5].sum()
+        payable_df[2] = pd.to_datetime(payable_df[2]).dt.strftime('%d-%m-%Y')
+        payable_df[3] = pd.to_datetime(payable_df[3]).dt.strftime('%d-%m-%Y')
+        payable_df[1]=payable_df[1].apply(lambda x:format_indian_currency_withoutsymbol(x)) #final charges
+        payable_df[4]=payable_df[4].apply(lambda x:format_indian_currency_withoutsymbol(x)) #paid amount
+        payable_df[5]=payable_df[5].apply(lambda x:format_indian_currency_withoutsymbol(x)) #outstanding
+        payable_df.fillna('--' , inplace=True)
+        payable_df.at[len(payable_df)-1,2] = ' '
+        payable_df.at[len(payable_df)-1,3] = ' '
+
         # convert Receivable List to dataframe
         receivable_df = pd.DataFrame(all_receivable_lst)
-        receivable_df.fillna('' , inplace=True)
+        import pdb
+        pdb.set_trace()
+
+        for i in range(0,receivable_df.shape[0]):
+            receivable_df.at[i,0] = "Wk " + str(receivable_df.at[i,0])+"( "+receivable_df.at[i,1].strftime('%d-%m-%Y')+" to "+receivable_df.at[i,2].strftime('%d-%m-%Y')+" )"
+        receivable_df = receivable_df[[0,3,4,5,6,9]]
+        receivable_df.columns = [0,1,2,3,4,5]
+
+        receivable_df = receivable_df.sort_values(by=payable_df.columns[1])
+        
+        if len(receivable_df) :
+            receivable_df.at[len(receivable_df),0] = 'Total'
+            receivable_df.loc[len(receivable_df)-1,2] = receivable_df[2].sum()
+            receivable_df.loc[len(receivable_df)-1,3] = receivable_df[3].sum()
+            receivable_df.loc[len(receivable_df)-1,5] = receivable_df[5].sum()
+        total2 = receivable_df[5].sum()
         receivable_df[1] = pd.to_datetime(receivable_df[1]).dt.strftime('%d-%m-%Y')
         receivable_df[4] = pd.to_datetime(receivable_df[4]).dt.strftime('%d-%m-%Y')
         receivable_df[2]=receivable_df[2].apply(lambda x:format_indian_currency_withoutsymbol(x))
         receivable_df[3]=receivable_df[3].apply(lambda x:format_indian_currency_withoutsymbol(x))
+        receivable_df[5]=receivable_df[5].apply(lambda x:format_indian_currency_withoutsymbol(x))
+        receivable_df.fillna('--' , inplace=True)
+        receivable_df.loc[len(receivable_df)-1,1] = ' '
+        receivable_df.loc[len(receivable_df)-1,4] = ' '
+        opening_balance = df_o_b['Amount'].apply(lambda x:format_indian_currency_withoutsymbol(x))
+        closing_balance = (df_o_b['Amount'] + (total1 -total2)).apply(lambda x:format_indian_currency_withoutsymbol(x))
+        import pdb
+        pdb.set_trace()
+        pdf_path = ReconPDF(start_date,end_date,in_data , payable_df.values.tolist() , receivable_df.values.tolist(),opening_balance[0],closing_balance[0])
         
-        pdf_path = ReconPDF(start_date,end_date,in_data , payable_df.values.tolist() , receivable_df.values.tolist())
         
         return FileResponse(open(pdf_path,'rb'),content_type='application/pdf')
         
     except Exception as e:
+        import pdb
+        pdb.set_trace()
         print(e)
         return HttpResponse(str(e) , status = 404)
 

@@ -208,7 +208,7 @@ def appendFinalPrevweek(current_wk_list,prev_wk_list,pool_acc):
         finyear_week_list= unique_pairs.values.tolist()
     
         user_already_disbursed_forweek_df=pd.DataFrame(TempDisbursedWeeks.objects.filter(pool_acctype=pool_acc).values('fin_year','week_no'),columns=['fin_year','week_no'])
-        
+
         if len(finyear_week_list)>1:
             sorted_data = sorted(finyear_week_list, key=lambda x: (int(x[0].split('-')[0]), x[1]))
             # it contains more than 1 week then only append old week to prev_wk_df so that always current wk df contains 1 week df values
@@ -216,7 +216,7 @@ def appendFinalPrevweek(current_wk_list,prev_wk_list,pool_acc):
                 # column to be dropped from latest record
                 fin_year=sorted_data[-1][0]
                 week_no=sorted_data[-1][1]
-            
+
                 # drop from dsm_receivables_df contains fin_year and week_no
                 filtered_df = current_wk_df[~((current_wk_df['Fin_year'] == fin_year) & (current_wk_df['Week_no'] == week_no))]
                 # append temp_df to prev_wk_df
@@ -259,18 +259,19 @@ def appendFinalPrevweek(current_wk_list,prev_wk_list,pool_acc):
     
 def getLastDisbursementSurplus():
     # always get the latest week based on Disbursed_date desc . If all are disbursed then only full disbursement happened
-    dis_status = list(DisbursementStatus.objects.filter(final_disburse=True).order_by('-Disbursed_date')[:1].values('Disbursed_date','Surplus_amt','legacy_surplus_amt','dsm','mbas','sras','tras','dsm_prevwk','revision_disbursed'))
+    dis_status = list(DisbursementStatus.objects.filter(final_disburse=True).order_by('-Disbursed_date')[:1].values('Disbursed_date','Surplus_amt','legacy_surplus_amt','dsm','mbas','sras','tras','dsm_prevwk','revision_disbursed','remarks'))
     
     # If no disbursement found then this is the first disbursement
     if dis_status:
         last_disbursed_date=dis_status[0]['Disbursed_date'].strftime('%d-%m-%Y')
+        remarks = dis_status[0]['remarks']
         #if not None else consider 0
         surplus_amt=dis_status[0]['Surplus_amt'] if dis_status[0]['Surplus_amt'] else 0
         legacy_surplus_amt=dis_status[0]['legacy_surplus_amt'] if dis_status[0]['legacy_surplus_amt'] else 0
         # subtract revision disbursed amount if any
         surplus_amt=surplus_amt-dis_status[0]['revision_disbursed'] if dis_status[0]['revision_disbursed'] else surplus_amt
         
-        return last_disbursed_date,surplus_amt,legacy_surplus_amt
+        return last_disbursed_date,surplus_amt,legacy_surplus_amt,remarks
     else:
         return None,0
 
@@ -363,7 +364,8 @@ def getAlreadyDisbursedAmounts(partial_dis_status,nldc_split_qry):
 
 def getLastDisbursedWk(request):
     try:
-        last_disbursed_date,surplus_amt,legacy_surplus_amt = getLastDisbursementSurplus()
+        last_disbursed_date,surplus_amt,legacy_surplus_amt,remarks = getLastDisbursementSurplus()
+        last_st_upload = BankStatement.objects.values_list("ValueDate",flat=True).last().strftime("%d-%m-%Y")
         
         partial_dis_status = list(DisbursementStatus.objects.filter(
             ( Q(dsm=False) | Q(net_as=False) |Q(reac=False) | Q(ir=False) | Q(dsm_prevwk=False)| Q(net_as_prevwk=False)| Q(reac_prevwk=False) | Q(final_disburse=False) )
@@ -430,8 +432,7 @@ def getLastDisbursedWk(request):
             else:
                 globals()[final_var] = []
         
-        
-        
+
         # theser are Partial DIsbursed weeks
         prev_wk_models = [
             (DSMReceivables, 'dsm_prevwk_status',   'dsm_prevwk_rcvd_list' ,'final_dsm_receivables','DSM'),
@@ -447,11 +448,12 @@ def getLastDisbursedWk(request):
             else:
                 globals()[final_var] = []
         
-        
+
         #get disbursement priority 
         disbursement_order=list(DisbursementOrder.objects.filter(Q(enddate__isnull=True)|Q(enddate__gte=datetime.now())).values('dsm','net_as','reac','ir','cong'))
         priority_list=[]
         # partially disbursed
+
        
         if len(partial_dis_status):
             for key,val in disbursement_order[0].items():
@@ -480,7 +482,6 @@ def getLastDisbursedWk(request):
         # get all disbursed weeks
         disbursed_weeks_lst=list(DisbursementStatus.objects.filter(final_disburse=True).order_by('-Disbursed_date').values_list('Disbursed_date',flat=True))
 
-        
         # unique Fin_year and Week_no
         dsm_finwk_df=pd.DataFrame(globals()['dsm_prevwk_rcvd_list'])
         if not dsm_finwk_df.empty:
@@ -521,15 +522,14 @@ def getLastDisbursedWk(request):
         
         nldc_split_qry = getAlreadyDisbursedAmounts(partial_dis_status ,nldc_split_qry)
 
-
         return JsonResponse([last_disbursed_date, all_poolaccounts_summary,[
             globals()['final_dsm_receivables'],globals()['final_net_as_receivables'],globals()['final_reac_receivables'] , globals()['final_ir_receivables'],globals()['final_cong_receivables'],  
             
             globals()['dsm_prevwk_rcvd_list'],globals()['net_as_prevwk_rcvd_list'],globals()['reac_prevwk_rcvd_list'] , globals()['ir_prevwk_rcvd_list'] ,globals()['cong_prevwk_rcvd_list']
-            ] , partial_dis_status,priority_list_sorted ,disbursed_weeks_lst , unique_wk_dict , nldc_split_qry ],safe=False)
+            ] , partial_dis_status,priority_list_sorted ,disbursed_weeks_lst , unique_wk_dict , nldc_split_qry,remarks,last_st_upload ],safe=False)
 
     except Exception as e:
-      #print(e)
+      print(e)
       return HttpResponse(extractdb_errormsg(e),status=404)
 
 
@@ -540,51 +540,63 @@ def transfertoLegacy(request):
         # get latest record from Disbursement Status
 
         dis_status = list(DisbursementStatus.objects.filter(final_disburse=True).order_by('-Disbursed_date')[:1].all().values())
-        if len(dis_status):
+        intimate_to_NLDC = list(IntimateNLDC.objects.filter(is_used_indisbursement=False).order_by('-intimate_date').all().values())
+
+        if len(intimate_to_NLDC):    
+            return JsonResponse({'status' : False , 'message' :'Please check intimated to NLDC, if anything pending IR should be transfered!! '} , safe=False)
+        
+        else:
             data = dis_status[0]
-            data.pop('id', None)
-            intimate_to_NLDC = list(IntimateNLDC.objects.filter(is_used_indisbursement=False).order_by('-intimate_date')[:1].all().values())
+            surplus_amt = int(data['Surplus_amt']) - int(to_be_transfer)
+            legacy_surplus_amt = int(data['legacy_surplus_amt']) + int(to_be_transfer)
+            remarks_1 = dis_status[0]['remarks']
+            
+            if remarks_1 is None:
+                remarks_1 = ' '
+            else :
+                remarks_1
 
-            #if isinstance(summary_data[0]['Total_amount_inpool'], (int, float, complex)):
-            #    total_amount_inpool =  summary_data[0]['Total_amount_inpool']
-            #else :
-            #    total_amount_inpool = 0
-
-            #if isinstance(summary_data[0]['Legacy_total'], (int, float, complex)):
-            #    legacy_total =  summary_data[0]['Legacy_total']
-            #else :
-            #    legacy_total = 0
-
-            #after_transfer = total_amount_inpool + legacy_total
-
-
-            if len(intimate_to_NLDC) :
-                data_to_nldc = intimate_to_NLDC[0]
-                if data_to_nldc['is_transferred'] :
-                    surplus_amt = data['Surplus_amt'] - to_be_transfer-data_to_nldc['transfer_amount']
-                    legacy_surplus_amt = data['legacy_surplus_amt'] + to_be_transfer
-                    IntimateNLDC.objects.filter(Q(is_transferred=True) & Q(is_used_indisbursement=False)).update(is_transferred = True ,is_used_indisbursement = True)
-                else :
-                    return JsonResponse({'status' : False , 'message' :'Please check intimated to NLDC, if anything pending IR should be transfered!! '} , safe=False)
-            else:
-                surplus_amt = data['Surplus_amt'] - to_be_transfer
-                legacy_surplus_amt = data['legacy_surplus_amt'] + to_be_transfer
-                
-            data['Disbursed_date'] = datetime.today().date()
-            data['Surplus_amt'] = surplus_amt
-            data['legacy_surplus_amt'] = legacy_surplus_amt
-            data['remarks'] = 'Transfered to Legacy'
-
-            DisbursementStatus.objects.create(**data)
-            # same way change Intimate NLDC table also
-            #IntimateNLDC.objects.filter( ( Q(is_transferred=False) & Q(is_used_indisbursement=False)) | (Q##(is_transferred=True) & Q(is_used_indisbursement=False)) ).update(
-            #    is_transferred = True ,
-            #    is_used_indisbursement = True
-            #)
-        return JsonResponse({'status' : True , 'message' :' Transferred to Legacy Successfully'} , safe=False)
+            DisbursementStatus.objects.filter(id= dis_status[0]['id']).update(
+            Surplus_amt = surplus_amt, 
+            remarks = remarks_1 +" _Amount of Rs. "+ str(to_be_transfer)+" from main to legacy on "+ datetime.today().strftime("%d-%m-%Y"),
+            legacy_surplus_amt = legacy_surplus_amt
+            )
+            return JsonResponse({'status' : True , 'message' :' Transferred to Legacy from Main account Successfully amount of ₹ '+ str(to_be_transfer)} , safe=False)
     except Exception as e:
       return HttpResponse(extractdb_errormsg(e),status=404)
-  
+
+
+
+def transfertoMain(request):
+    try:
+        summary_data = json.loads(request.body)['disburse_summary']
+        to_be_transfer = json.loads(request.body)['transfer_to_legacy']
+        # get latest record from Disbursement Status
+        dis_status = list(DisbursementStatus.objects.filter(final_disburse=True).order_by('-Disbursed_date')[:1].all().values())
+        intimate_to_NLDC = list(IntimateNLDC.objects.filter(is_used_indisbursement=False).order_by('-intimate_date').all().values())
+        if len(intimate_to_NLDC):
+            return JsonResponse({'status' : False , 'message' :'Please check intimated to NLDC, if anything pending IR should be transfered!! '} , safe=False)
+        else :
+            data = dis_status[0]
+
+            surplus_amt = int(data['Surplus_amt']) + int(to_be_transfer)
+            legacy_surplus_amt_1 = int(data['legacy_surplus_amt']) - int(to_be_transfer)
+            remarks_1 = dis_status[0]['remarks']
+            if remarks_1 is None:
+                remarks_1 = ' '
+            else :
+                remarks_1
+
+            DisbursementStatus.objects.filter(id= dis_status[0]['id']).update(Surplus_amt = surplus_amt, remarks = remarks_1 +" _Amount of Rs. "+ str(to_be_transfer)+" from Legacy to Main on "+ datetime.today().strftime("%d-%m-%Y"),legacy_surplus_amt = legacy_surplus_amt_1) 
+            return JsonResponse({'status' : True , 'message' :' Transferred to Main from Legacy account Successfully amount of ₹'+str(to_be_transfer)} , safe=False)
+    except Exception as e:
+      return HttpResponse(extractdb_errormsg(e),status=404)
+
+
+
+
+
+
 def getDisburseDetails(request):
     try:
         input_data=json.loads(request.body)
@@ -874,6 +886,7 @@ def storeDisbursedValues(request):
     try:
         disburse_list=json.loads(request.body)
         disburse_df=pd.DataFrame(disburse_list['selected_rows'],columns=['Fin_year', 'Week_no', 'Entity', 'Final_charges', 'Fin_code', 'id','Disburse_amount'])
+
        
         dis_status_qry = list(DisbursementStatus.objects.filter(Disbursed_date=disburse_list['partial_status'][0]['Disbursed_date']).all().values()) if len(disburse_list['partial_status']) else []
         pooltype=disburse_list['pooltype'].upper()
@@ -918,12 +931,14 @@ def storeDisbursedValues(request):
                     week_no=disburse_list['finwk_selected'][1]
                 ).save()
             except Exception as e:
+
                 extractdb_errormsg(e)
                 # if already stored then skip , normally this case do not arise
 
         return JsonResponse('success',safe=False)
 
     except Exception as e:
+        pdb.set_trace()
         return HttpResponse(extractdb_errormsg(e),status=404)
 
 def getPaymentsConsideredForDisbursement(pool_acc,legacy_bills):
@@ -1186,13 +1201,7 @@ def finalDisbursement(request):
         else:
             return JsonResponse({'status':False , 'message':'No pending Disbursements'},safe=False)
         
-        # changing final_disburse status to True , parallely update Surplus amount also
-        dis_status_qry.update(final_disburse=True,Surplus_amt=net_amount)
-        # update the Intimate NLDC table
-        intimate_nldc_qry.update(is_used_indisbursement=True)
-        TempDisbursedWeeks.objects.all().delete()
-        return JsonResponse({'status':True , 'message':'Disbursement done Successfully'},safe=False)
-
+        
     except Exception as e:
         print(e)
         return HttpResponse(extractdb_errormsg(e),status=404)
