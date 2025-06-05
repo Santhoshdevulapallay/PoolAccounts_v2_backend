@@ -32,6 +32,7 @@ class ReconLastQuarterBalance(models.Model):
     Acc_type = models.CharField(max_length=15,default=None)
     Fin_year = models.CharField(max_length=15,blank=True)
     Quarter = models.CharField(max_length=5 ,blank=True)
+    as_on_date = models.DateField(default=None,blank=True,null=True)
     Amount = models.FloatField(default = 0 )
     Fin_code = models.CharField(max_length=10 ,blank=True)
     class Meta:

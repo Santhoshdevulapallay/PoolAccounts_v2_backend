@@ -37,7 +37,7 @@ class NetASBaseModel(models.Model):
       
       class Meta:
             db_table = 'netas_basemodel'
-            unique_together=['Fin_year','Week_no','Entity']
+            unique_together=['Fin_year','Week_no','Entity','Revision_no','Final_charges']
 
 
 class NetASPayments(models.Model):

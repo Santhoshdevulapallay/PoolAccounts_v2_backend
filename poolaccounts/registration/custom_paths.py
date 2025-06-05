@@ -18,6 +18,6 @@ current_financial_year=get_current_financial_year()
 # regions=['Southern Region to Western Region', 'Western Region to Southern Region', 'Southern Region to Eastern Region', 'Eastern Region to Southern Region ']
 
 # drive_folder_path='D:\\PoolAccounts\\Backend\\poolaccounts\\Files\\Logs\\'
-drive_folder_path='E:\\PoolAccountsV2\\Poolaccounts_backend\\poolaccounts\\Files\\Logs\\'
+drive_folder_path='D:\\PoolAccountsV2\\Poolaccounts_backend\\poolaccounts\\Files\\Logs\\'
 
 

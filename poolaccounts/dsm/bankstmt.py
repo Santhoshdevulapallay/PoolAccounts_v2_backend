@@ -605,13 +605,13 @@ def getBillAmount(request):
                         try:
                               # see here Week_no means Revision_Dates dont confuse
                               final_charges_lst=list(RevisionBaseModel.objects.filter(Acc_type=in_data['AccType'],Letter_date=in_data['Week_no'], Fin_code=fin_code,PayableorReceivable='Payable').values('Final_charges','revisionpayments__Paid_amount'))
-                              
                         except:
                               return JsonResponse(0,safe=False)
                         # rename revisionpayments__Paid_amount to Paid_amount
+
                         for item in final_charges_lst:
                               item['Paid_amount'] = item.pop('revisionpayments__Paid_amount')
-                       
+
                         final_charges=calOutstandingAmount(final_charges_lst)
 
                   elif in_data['AccType'] == 'Shortfall':
@@ -1073,58 +1073,181 @@ def approveRevisionPayments(row,fin_code):
                         # get the letter to identify all bills
                         letter_date=revision_qry[0]['Letter_date']
                         # get all bills related to this letter
-                        all_related_bills_df=pd.DataFrame(DSMBaseModel.objects.filter(Effective_start_date=letter_date,Fin_code=fin_code).values('Fin_year','Week_no','Week_startdate','Week_enddate','Entity','Final_charges','PayableorReceivable','Fin_code','payments__Paid_amount','dsmreceivables__Disbursed_amount'),columns=['Fin_year','Week_no','Week_startdate','Week_enddate','Entity', 'Final_charges', 'PayableorReceivable','Fin_code','payments__Paid_amount','dsmreceivables__Disbursed_amount'])
+                        if row['Pool_Acc'] == 'DSM_REVISION':
+                              all_related_bills_df=pd.DataFrame(DSMBaseModel.objects.filter(Effective_start_date=letter_date,Fin_code=fin_code).values('Fin_year','Week_no','Week_startdate','Week_enddate','Entity','Final_charges','PayableorReceivable','Fin_code','payments__Paid_amount','dsmreceivables__Disbursed_amount'),columns=['Fin_year','Week_no','Week_startdate','Week_enddate','Entity', 'Final_charges', 'PayableorReceivable','Fin_code','payments__Paid_amount','dsmreceivables__Disbursed_amount'])
 
-                        all_related_bills_df.rename(columns={'payments__Paid_amount':'Paid_amount','dsmreceivables__Disbursed_amount':'Disbursed_amount'},inplace=True)
+                              all_related_bills_df.rename(columns={'payments__Paid_amount':'Paid_amount','dsmreceivables__Disbursed_amount':'Disbursed_amount'},inplace=True)
 
-                        all_related_bills_df['Paid_amount']=all_related_bills_df['Paid_amount'].fillna(0)
-                        all_related_bills_df['Disbursed_amount']=all_related_bills_df['Disbursed_amount'].fillna(0)
-            
-                        all_related_bills_df[['Final_charges', 'Paid_amount','Disbursed_amount']] = all_related_bills_df[['Final_charges', 'Paid_amount','Disbursed_amount']].abs()
-                        sub_bills_df=all_related_bills_df.groupby(['Fin_year', 'Week_no', 'Fin_code']).agg({
-                              'Entity':'first',
-                              'Week_startdate': 'first',
-                              'Week_enddate': 'first',
-                              'Final_charges' : 'first',
-                              'PayableorReceivable': 'first',
-                              'Paid_amount': 'sum',
-                              'Disbursed_amount': 'sum'
-                              }).reset_index()
-                        sub_bills_df['Final_charges'] = sub_bills_df.apply(
-                        lambda row: row['Final_charges'] * -1 if row['PayableorReceivable'] == 'Receivable' else row['Final_charges'],
-                        axis=1
-                        )
-                        sub_bills_df['Paid_amount']=sub_bills_df['Paid_amount']*-1
-                        sub_bills_df['Diff_amount'] = sub_bills_df['Final_charges']+sub_bills_df['Paid_amount']+sub_bills_df['Disbursed_amount']
-                        # Update PayableorReceivable based on Diff_amount
-                        sub_bills_df["PayableorReceivable"] = sub_bills_df["Diff_amount"].apply(lambda x: "Payable" if x > 0 else "Receivable")
+                              all_related_bills_df['Paid_amount']=all_related_bills_df['Paid_amount'].fillna(0)
+                              all_related_bills_df['Disbursed_amount']=all_related_bills_df['Disbursed_amount'].fillna(0)
+                  
+                              all_related_bills_df[['Final_charges', 'Paid_amount','Disbursed_amount']] = all_related_bills_df[['Final_charges', 'Paid_amount','Disbursed_amount']].abs()
+                              all_related_bills_df.loc[all_related_bills_df.duplicated(subset=['Fin_year', 'Week_no', 'Fin_code','Paid_amount'], keep='first'), ['Paid_amount']] = 0
+                              all_related_bills_df.loc[all_related_bills_df.duplicated(subset=['Fin_year', 'Week_no', 'Fin_code','Disbursed_amount'], keep='first'), ['Disbursed_amount']] = 0
+                              all_related_bills_df.loc[all_related_bills_df.duplicated(subset=['Fin_year', 'Week_no', 'Fin_code','Final_charges'], keep='first'), ['Final_charges']] = 0
 
-                        for _ , sub_row in sub_bills_df.iterrows():
-                              dsm_obj=DSMBaseModel.objects.get(Fin_year = sub_row['Fin_year'] , Week_no = sub_row['Week_no'] , Fin_code = sub_row['Fin_code'] , Effective_end_date__isnull=True)
-                              if sub_row['PayableorReceivable'] == 'Payable':
-                                    # here updating payables
-                                    Payments(
-                                          Paid_date=row['ValueDate_fk_id__ValueDate'],
-                                          Description=row['ValueDate_fk_id__Description'],
-                                          Paid_amount= sub_row['Diff_amount'] ,
-                                          Other_info='Adjusting the cumulative bill',
-                                          Bank_type=row['ValueDate_fk_id__BankType'],
-                                          paystatus_fk=dsm_obj,
-                                          approved_date=datetime.now() ,
-                                          Is_disbursed = True
-                                          ).save()
-                              elif sub_row['PayableorReceivable'] == 'Receivable':
-                                    DSMReceivables(
-                                          Disbursed_amount=sub_row['Diff_amount'],
-                                          rcvstatus_fk=dsm_obj,
-                                          disbursed_date=row['ValueDate_fk_id__ValueDate'],
-                                          neft_txnno=row['ValueDate_fk_id__Description']
-                                    ).save()
-
-                              else: continue
-                              # now update Basemodel
-                              DSMBaseModel.objects.filter(Fin_year = sub_row['Fin_year'] , Week_no = sub_row['Week_no'] , Fin_code = sub_row['Fin_code'] , Effective_end_date__isnull=False).update(Is_disbursed = True)
                               
+                              sub_bills_df=all_related_bills_df.groupby(['Fin_year', 'Week_no', 'Fin_code']).agg({
+                                    'Entity':'first',
+                                    'Week_startdate': 'first',
+                                    'Week_enddate': 'first',
+                                    'Final_charges' : 'first',
+                                    'PayableorReceivable': 'first',
+                                    'Paid_amount': 'sum',
+                                    'Disbursed_amount': 'sum'
+                                    }).reset_index()
+                              sub_bills_df['Final_charges'] = sub_bills_df.apply(
+                              lambda row: row['Final_charges'] * -1 if row['PayableorReceivable'] == 'Receivable' else row['Final_charges'],
+                              axis=1
+                              )
+                              sub_bills_df['Paid_amount']=sub_bills_df['Paid_amount']*-1
+                              sub_bills_df['Diff_amount'] = sub_bills_df['Final_charges']+sub_bills_df['Paid_amount']+sub_bills_df['Disbursed_amount']
+                              # Update PayableorReceivable based on Diff_amount
+                              sub_bills_df["PayableorReceivable"] = sub_bills_df["Diff_amount"].apply(lambda x: "Payable" if x > 0 else "Receivable")
+
+                              for _ , sub_row in sub_bills_df.iterrows():
+                                    dsm_obj=DSMBaseModel.objects.get(Fin_year = sub_row['Fin_year'] , Week_no = sub_row['Week_no'] , Fin_code = sub_row['Fin_code'] , Effective_end_date__isnull=True)
+                                    if sub_row['PayableorReceivable'] == 'Payable':
+                                          # here updating payables
+                                          Payments(
+                                                Paid_date=row['ValueDate_fk_id__ValueDate'],
+                                                Description=row['ValueDate_fk_id__Description'],
+                                                Paid_amount= sub_row['Diff_amount'] ,
+                                                Other_info='Adjusting the cumulative bill',
+                                                Bank_type=row['ValueDate_fk_id__BankType'],
+                                                paystatus_fk=dsm_obj,
+                                                approved_date=datetime.now() ,
+                                                Is_disbursed = True
+                                                ).save()
+                                    elif sub_row['PayableorReceivable'] == 'Receivable':
+                                          DSMReceivables(
+                                                Disbursed_amount=sub_row['Diff_amount'],
+                                                rcvstatus_fk=dsm_obj,
+                                                disbursed_date=row['ValueDate_fk_id__ValueDate'],
+                                                neft_txnno=row['ValueDate_fk_id__Description']
+                                          ).save()
+
+                                    else: continue
+                                    # now update Basemodel
+                                    DSMBaseModel.objects.filter(Fin_year = sub_row['Fin_year'] , Week_no = sub_row['Week_no'] , Fin_code = sub_row['Fin_code'] , Effective_end_date__isnull=False).update(Is_disbursed = True)
+
+                        elif row['Pool_Acc'] == 'NETAS_REVISION':
+                              all_related_bills_df=pd.DataFrame(NetASBaseModel.objects.filter(Effective_start_date=letter_date,Fin_code=fin_code).values('Fin_year','Week_no','Week_startdate','Week_enddate','Entity','Final_charges','PayableorReceivable','Fin_code','netaspayments__Paid_amount','netasreceivables__Disbursed_amount'),columns=['Fin_year','Week_no','Week_startdate','Week_enddate','Entity', 'Final_charges', 'PayableorReceivable','Fin_code','netaspayments__Paid_amount','netasreceivables__Disbursed_amount'])
+
+                              all_related_bills_df.rename(columns={'netaspayments__Paid_amount':'Paid_amount','netasreceivables__Disbursed_amount':'Disbursed_amount'},inplace=True)
+
+                              all_related_bills_df['Paid_amount']=all_related_bills_df['Paid_amount'].fillna(0)
+                              all_related_bills_df['Disbursed_amount']=all_related_bills_df['Disbursed_amount'].fillna(0)
+                  
+                              all_related_bills_df[['Final_charges', 'Paid_amount','Disbursed_amount']] = all_related_bills_df[['Final_charges', 'Paid_amount','Disbursed_amount']].abs()
+                              all_related_bills_df.loc[all_related_bills_df.duplicated(subset=['Fin_year', 'Week_no', 'Fin_code','Paid_amount'], keep='first'), ['Paid_amount']] = 0
+                              all_related_bills_df.loc[all_related_bills_df.duplicated(subset=['Fin_year', 'Week_no', 'Fin_code','Disbursed_amount'], keep='first'), ['Disbursed_amount']] = 0
+                              all_related_bills_df.loc[all_related_bills_df.duplicated(subset=['Fin_year', 'Week_no', 'Fin_code','Final_charges'], keep='first'), ['Final_charges']] = 0
+
+                              
+                              
+                              sub_bills_df=all_related_bills_df.groupby(['Fin_year', 'Week_no', 'Fin_code']).agg({
+                                    'Entity':'first',
+                                    'Week_startdate': 'first',
+                                    'Week_enddate': 'first',
+                                    'Final_charges' : 'sum',
+                                    'PayableorReceivable': 'first',
+                                    'Paid_amount': 'sum',
+                                    'Disbursed_amount': 'sum'
+                                    }).reset_index()
+                              sub_bills_df['Final_charges'] = sub_bills_df.apply(
+                              lambda row: row['Final_charges'] * -1 if row['PayableorReceivable'] == 'Receivable' else row['Final_charges'],
+                              axis=1
+                              )
+                              sub_bills_df['Paid_amount']=sub_bills_df['Paid_amount']*-1
+                              sub_bills_df['Diff_amount'] = sub_bills_df['Final_charges']+sub_bills_df['Paid_amount']+sub_bills_df['Disbursed_amount']
+                              # Update PayableorReceivable based on Diff_amount
+                              sub_bills_df["PayableorReceivable"] = sub_bills_df["Diff_amount"].apply(lambda x: "Payable" if x > 0 else "Receivable")
+
+                              for _ , sub_row in sub_bills_df.iterrows():
+                                    dsm_obj=NetASBaseModel.objects.get(Fin_year = sub_row['Fin_year'] , Week_no = sub_row['Week_no'] , Fin_code = sub_row['Fin_code'] , Effective_end_date__isnull=True)
+                                    if sub_row['PayableorReceivable'] == 'Payable':
+                                          # here updating payables
+                                          NetASPayments(
+                                                Paid_date=row['ValueDate_fk_id__ValueDate'],
+                                                Description=row['ValueDate_fk_id__Description'],
+                                                Paid_amount= sub_row['Diff_amount'] ,
+                                                Other_info='Adjusting the cumulative bill',
+                                                Bank_type=row['ValueDate_fk_id__BankType'],
+                                                paystatus_fk=dsm_obj,
+                                                approved_date=datetime.now() ,
+                                                Is_disbursed = True
+                                                ).save()
+                                    elif sub_row['PayableorReceivable'] == 'Receivable':
+                                          NetASReceivables(
+                                                Disbursed_amount=sub_row['Diff_amount'],
+                                                rcvstatus_fk=dsm_obj,
+                                                disbursed_date=row['ValueDate_fk_id__ValueDate'],
+                                                neft_txnno=row['ValueDate_fk_id__Description']
+                                          ).save()
+
+                                    else: continue
+                                    # now update Basemodel
+                                    NetASBaseModel.objects.filter(Fin_year = sub_row['Fin_year'] , Week_no = sub_row['Week_no'] , Fin_code = sub_row['Fin_code'] , Effective_end_date__isnull=False).update(Is_disbursed = True)
+                        elif row['Pool_Acc'] == 'REAC_REVISION':
+                              all_related_bills_df=pd.DataFrame(REACBaseModel.objects.filter(Effective_start_date=letter_date,Fin_code=fin_code).values('Fin_year','Week_no','Week_startdate','Week_enddate','Entity','Final_charges','PayableorReceivable','Fin_code','reacpayments__Paid_amount','reacreceivables__Disbursed_amount'),columns=['Fin_year','Week_no','Week_startdate','Week_enddate','Entity', 'Final_charges', 'PayableorReceivable','Fin_code','reacpayments__Paid_amount','reacreceivables__Disbursed_amount'])
+
+                              all_related_bills_df.rename(columns={'reacpayments__Paid_amount':'Paid_amount','reacreceivables__Disbursed_amount':'Disbursed_amount'},inplace=True)
+
+                              all_related_bills_df['Paid_amount']=all_related_bills_df['Paid_amount'].fillna(0)
+                              all_related_bills_df['Disbursed_amount']=all_related_bills_df['Disbursed_amount'].fillna(0)
+                  
+                              all_related_bills_df[['Final_charges', 'Paid_amount','Disbursed_amount']] = all_related_bills_df[['Final_charges', 'Paid_amount','Disbursed_amount']].abs()
+                              all_related_bills_df.loc[all_related_bills_df.duplicated(subset=['Fin_year', 'Week_no', 'Fin_code','Paid_amount'], keep='first'), ['Paid_amount']] = 0
+                              all_related_bills_df.loc[all_related_bills_df.duplicated(subset=['Fin_year', 'Week_no', 'Fin_code','Disbursed_amount'], keep='first'), ['Disbursed_amount']] = 0
+                              all_related_bills_df.loc[all_related_bills_df.duplicated(subset=['Fin_year', 'Week_no', 'Fin_code','Final_charges'], keep='first'), ['Final_charges']] = 0
+                              
+                              
+                              sub_bills_df=all_related_bills_df.groupby(['Fin_year', 'Week_no', 'Fin_code']).agg({
+                                    'Entity':'first',
+                                    'Week_startdate': 'first',
+                                    'Week_enddate': 'first',
+                                    'Final_charges' : 'first',
+                                    'PayableorReceivable': 'first',
+                                    'Paid_amount': 'sum',
+                                    'Disbursed_amount': 'sum'
+                                    }).reset_index()
+                              sub_bills_df['Final_charges'] = sub_bills_df.apply(
+                              lambda row: row['Final_charges'] * -1 if row['PayableorReceivable'] == 'Receivable' else row['Final_charges'],
+                              axis=1
+                              )
+                              sub_bills_df['Paid_amount']=sub_bills_df['Paid_amount']*-1
+                              sub_bills_df['Diff_amount'] = sub_bills_df['Final_charges']+sub_bills_df['Paid_amount']+sub_bills_df['Disbursed_amount']
+                              # Update PayableorReceivable based on Diff_amount
+                              sub_bills_df["PayableorReceivable"] = sub_bills_df["Diff_amount"].apply(lambda x: "Payable" if x > 0 else "Receivable")
+
+                              for _ , sub_row in sub_bills_df.iterrows():
+                                    dsm_obj=REACBaseModel.objects.get(Fin_year = sub_row['Fin_year'] , Week_no = sub_row['Week_no'] , Fin_code = sub_row['Fin_code'] , Effective_end_date__isnull=True)
+                                    if sub_row['PayableorReceivable'] == 'Payable':
+                                          # here updating payables
+                                          REACPayments(
+                                                Paid_date=row['ValueDate_fk_id__ValueDate'],
+                                                Description=row['ValueDate_fk_id__Description'],
+                                                Paid_amount= sub_row['Diff_amount'] ,
+                                                Other_info='Adjusting the cumulative bill',
+                                                Bank_type=row['ValueDate_fk_id__BankType'],
+                                                paystatus_fk=dsm_obj,
+                                                approved_date=datetime.now() ,
+                                                Is_disbursed = True
+                                                ).save()
+                                    elif sub_row['PayableorReceivable'] == 'Receivable':
+                                          REACReceivables(
+                                                Disbursed_amount=sub_row['Diff_amount'],
+                                                rcvstatus_fk=dsm_obj,
+                                                disbursed_date=row['ValueDate_fk_id__ValueDate'],
+                                                neft_txnno=row['ValueDate_fk_id__Description']
+                                          ).save()
+
+                                    else: continue
+                                    # now update Basemodel
+                                    REACBaseModel.objects.filter(Fin_year = sub_row['Fin_year'] , Week_no = sub_row['Week_no'] , Fin_code = sub_row['Fin_code'] , Effective_end_date__isnull=False).update(Is_disbursed = True)
+
+
                   revisionas_obj_qry=RevisionBaseModel.objects.get(id=row['Parent_id'])
                   RevisionPayments(
                         Paid_date=row['ValueDate_fk_id__ValueDate']  ,
@@ -1340,6 +1463,7 @@ def viewBankStatement(request):
             mapped_bank_df=pd.DataFrame(MappedBankEntries.objects.filter(ValueDate_fk__PostDate__range=[start_date,end_date],ValueDate_fk__BankType__in=bank_types ).exclude(Status='R').all().values() ,columns=['id', 'Pool_Acc', 'Fin_year', 'Week_no', 'Amount', 'Entity','ValueDate_fk_id', 'Other_info', 'Status', 'Reject_remarks','Parent_id'])
 
             merged_df=pd.merge(bank_stmt_df,mapped_bank_df,left_on=['id'],right_on=['ValueDate_fk_id'],how='left')
+            
             merged_df=merged_df.fillna('')
             merged_df.sort_values(['PostDate','Entity'],inplace=True)
             return JsonResponse(merged_df.to_dict(orient='records'),safe=False)

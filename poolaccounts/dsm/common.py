@@ -209,7 +209,7 @@ def format_indian_currency_withoutsymbol(amount):
         formatted_amount = formatted_amount.replace('₹' ,'').strip()
         # Add the negative sign and Indian Rupee symbol if the amount is negative
         if is_negative:
-            return '-' + formatted_amount[1:]
+            return '-' + formatted_amount
         else:
             return formatted_amount
     except:
