@@ -205,9 +205,8 @@ def uploadRPCBillManually(request):
             )
             return JsonResponse('Uploaded Successfully', safe=False)
       except Exception as e:
-            print(e)
             return HttpResponse(extractdb_errormsg(e),status=404)
-      
+   
 def srpcFileStatus(request):
       try:
             formdata=json.loads(request.body)

@@ -19,3 +19,9 @@ class NewBankDetailsForm(forms.ModelForm):
             model = BankDetails
             # fields=['bank_account','bank_name','ifsc_code','is_sbi','start_date','end_date','fin_code_fk']
             fields='__all__'
+
+class NewLCDetailsForm(forms.ModelForm):
+      class Meta:
+            model = LCDetails
+            # fields=['bank_account','bank_name','ifsc_code','is_sbi','start_date','end_date','fin_code_fk']
+            fields='__all__'
