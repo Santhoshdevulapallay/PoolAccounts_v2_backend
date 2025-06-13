@@ -132,9 +132,7 @@ def reco_for_user(fin_code,startdate,enddate,acc_type):
                 excess.append(0)
 
             all_paid_inrange_list+= excess_payments_list
-
-        
-
+       
         all_rcv_inrange_df=pd.DataFrame(receivables_qry.filter(rcvstatus_fk__Fin_code=fin_code,rcvstatus_fk__Revision_no =0).values('rcvstatus_fk__Week_no','rcvstatus_fk__Week_startdate','rcvstatus_fk__Week_enddate','rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date','rcvstatus_fk__Final_charges','Disbursed_amount','disbursed_date') , columns=['rcvstatus_fk__Week_no','rcvstatus_fk__Week_startdate','rcvstatus_fk__Week_enddate','rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date','rcvstatus_fk__Final_charges','Disbursed_amount','disbursed_date'])
 
         all_rcv_inrange_df['rcvstatus_fk__Letter_date'] = pd.to_datetime(all_rcv_inrange_df['rcvstatus_fk__Letter_date'])
@@ -176,6 +174,7 @@ def reco_for_user(fin_code,startdate,enddate,acc_type):
         
         return all_paid_inrange_list,all_rcv_inrange_list
     except Exception as e:
+        
         return [] , []
 
 def userRecon(request):
