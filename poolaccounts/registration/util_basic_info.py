@@ -1,9 +1,16 @@
 
 
-from .models import Registration , BankDetails
-from django.http import JsonResponse
+from .models import Registration , BankDetails , LCDetails
+from django.http import JsonResponse , HttpResponse
 import json , datetime
 from django.db.models import  Q
+import os
+from .forms import NewLCDetailsForm
+from .add530hrs import add530hrstoDateString
+from poolaccounts.settings import base_dir
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError
+from rest_framework import status
 
 def getUtilBasicDetails(request):
     try:
@@ -51,4 +58,55 @@ def getUtilBasicDetails(request):
         return JsonResponse([details_dict , details_dict1 ], safe=False)
     except Exception as e:
         return JsonResponse([details_dict , details_dict1 ], safe=False)
+  
+def getLCDetails(request):
+    try:
+        fin_code = request.body.decode('utf-8')
+        lc_details = list(LCDetails.objects.filter(fincode = fin_code).all().values())
+        return JsonResponse(lc_details, safe=False)
+    except Exception as e:
+        return JsonResponse([] , safe=False)
+
+
+def saveLCDetails(request):
+    try:
+        formdata=json.loads(request.POST['formdata'])
+        # add 5:30 hrs to startdate and end date
+        date_of_issue = add530hrstoDateString(formdata['date_of_issue'].replace('"','')).date()
+        if formdata['date_of_expiry'] is not None:
+                end_date = add530hrstoDateString(formdata['date_of_expiry'].replace('"','')).date()
+                formdata['date_of_expiry']=end_date 
+
+        #changing the date format
+        formdata['date_of_issue']=date_of_issue  
+        
+        # write the files into folder
+        parent_folder = os.path.abspath(os.path.join(base_dir, os.pardir))
+        directory = os.path.join(parent_folder, 'Files', 'LCDocs' , formdata['username'])
+        # add startdate and enddate to create new folder
+        if not os.path.exists(directory):
+                # Create the directory if it doesn't exist
+                os.makedirs(directory)
+
+        all_file_paths=[]
+        for fl in request.FILES.getlist('files'):
+                file_path=os.path.join(directory ,  fl.name)
+                with open(file_path, 'wb+') as destination:
+                    for chunk in fl.chunks():
+                            destination.write(chunk)
+
+                short_path='\\Files\\LCDocs\\'+formdata['username']+'\\'+fl.name
+                all_file_paths.append(short_path)
+        # change the supporting docs filenames
+        formdata['supporting_docs'] = all_file_paths
+        del formdata['username']
+        form = NewLCDetailsForm(formdata)
+        if form.is_valid():
+                LCDetails.objects.create(**form.cleaned_data)
+                return JsonResponse('success',safe=False)
+        else:
+                return HttpResponse(form.errors['__all__'] , status=status.HTTP_400_BAD_REQUEST)
+            
+    except (IntegrityError, ValidationError) as e:
+        return HttpResponse(str(e),status=status.HTTP_400_BAD_REQUEST)
   

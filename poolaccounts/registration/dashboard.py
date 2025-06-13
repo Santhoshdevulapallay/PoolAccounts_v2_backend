@@ -125,13 +125,12 @@ def getDashboardData(request):
                   merged_df['ValueDate'] = merged_df['ValueDate'].dt.strftime("%d-%m-%Y")
             except :
                   pass
-            
-            
-            disb_df = pd.DataFrame(DisbursedEntities.objects.all().values())          
-            disb_date_df = pd.DataFrame(DisbursementStatus.objects.all().values())
+      
+            # disb_df = pd.DataFrame(DisbursedEntities.objects.all().values())          
+            # disb_date_df = pd.DataFrame(DisbursementStatus.objects.all().values())
+            lc_details = list(LCDetails.objects.filter(fincode =fincode , date_of_expiry__lte = datetime.today()).values_list('amount_inlacs' , flat = True))
 
-
-            return JsonResponse([all_status,last_week_surplus_amt,final_outstanding_df.to_dict(orient='records'),dsm_sum,reac_sum,netas_sum,last_st_upload,legacy_sum,total,shortfall_sum,merged_df.to_dict(orient='records')],safe=False)
+            return JsonResponse([all_status,last_week_surplus_amt,final_outstanding_df.to_dict(orient='records'),dsm_sum,reac_sum,netas_sum,last_st_upload,legacy_sum,total,shortfall_sum,merged_df.to_dict(orient='records') , lc_details],safe=False)
 
       except Exception as e:
             

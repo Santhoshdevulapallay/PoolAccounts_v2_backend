@@ -538,8 +538,7 @@ def generateReconPDF(request):
         all_payable_lst , all_receivable_lst = reco_for_user(fin_code,start_date,end_date,acc_type)
         o_b = ReconLastQuarterBalance.objects.filter(Fin_code = fin_code, Acc_type =acc_type ,as_on_date = start_date-timedelta(days=1)).values()
         df_o_b = pd.DataFrame.from_records(o_b)
-        import pdb
-        pdb.set_trace()
+       
         # convert Payable List to dataframe and do some modifications
         payable_df = pd.DataFrame(all_payable_lst)
         
@@ -570,8 +569,7 @@ def generateReconPDF(request):
 
         # convert Receivable List to dataframe
         receivable_df = pd.DataFrame(all_receivable_lst)
-        import pdb
-        pdb.set_trace()
+       
 
         for i in range(0,receivable_df.shape[0]):
             receivable_df.at[i,0] = "Wk " + str(receivable_df.at[i,0])+"( "+receivable_df.at[i,1].strftime('%d-%m-%Y')+" to "+receivable_df.at[i,2].strftime('%d-%m-%Y')+" )"
@@ -596,17 +594,13 @@ def generateReconPDF(request):
         receivable_df.loc[len(receivable_df)-1,4] = ' '
         opening_balance = df_o_b['Amount'].apply(lambda x:format_indian_currency_withoutsymbol(x))
         closing_balance = (df_o_b['Amount'] + (total1 -total2)).apply(lambda x:format_indian_currency_withoutsymbol(x))
-        import pdb
-        pdb.set_trace()
+       
         pdf_path = ReconPDF(start_date,end_date,in_data , payable_df.values.tolist() , receivable_df.values.tolist(),opening_balance[0],closing_balance[0])
         
         
         return FileResponse(open(pdf_path,'rb'),content_type='application/pdf')
         
     except Exception as e:
-        import pdb
-        pdb.set_trace()
-        print(e)
         return HttpResponse(str(e) , status = 404)
 
 

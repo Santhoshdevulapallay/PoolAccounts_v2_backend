@@ -705,12 +705,10 @@ def settlement(acc_type,letter_date,fin_code):
         sub_bills_df['Diff_amount'] = sub_bills_df['Final_charges']+sub_bills_df['Paid_amount']+sub_bills_df['Disbursed_amount']
         # Update PayableorReceivable based on Diff_amount
         sub_bills_df["PayableorReceivable"] = sub_bills_df["Diff_amount"].apply(lambda x: "Payable" if x > 0 else "Receivable")
-        import pdb
-        pdb.set_trace()
+     
 
         for _ , sub_row in sub_bills_df.iterrows():
             dsm_obj=DSMBaseModel.objects.get(Fin_year = sub_row['Fin_year'] , Week_no = sub_row['Week_no'] , Fin_code = sub_row['Fin_code'] , Effective_end_date__isnull=True)
-            import pdb ; pdb.set_trace()
             if sub_row['PayableorReceivable'] == 'Payable':
                 # here updating payables
                 Payments(

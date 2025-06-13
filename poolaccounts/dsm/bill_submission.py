@@ -301,8 +301,6 @@ def storeSRASBills(main_bills_df,disbursement_dates_qry,due_date_qry ,acc_type,l
                         return JsonResponse({'status':True , 'message': 'DSM Bills are Submitted Successfully' },safe=False)
                   
                   except Exception as e:
-                        print(e)
-                        import pdb ; pdb.set_trace()
                         extractdb_errormsg(e)
                         return JsonResponse({'status':False , 'message': 'Bills are already submitted , Please check' },safe=False)
                   

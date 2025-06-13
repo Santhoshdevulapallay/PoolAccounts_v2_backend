@@ -48,6 +48,8 @@ urlpatterns = [
       path('scuc_store/', views.scucStore ),
       # user module
       path('get_basic_details/', (views.getUtilBasicDetails )),
+      path('get_lc_details/', (views.getLCDetails )),
+      path('save_lc_details/', (views.saveLCDetails )),
       # admin page
       path('admin/', admin.site.urls),
 ]

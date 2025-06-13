@@ -28,7 +28,7 @@ def storeShortfallBill(request):
         letter_date = add530hrstoDateString(letter_date_str).date() 
         fin_year = request.POST['fin_year']
         due_date = letter_date + timedelta(days = 10)
-        import pdb ; pdb.set_trace()
+       
         for row in formdata:
             ShortfallBaseModel(
                 Fin_year = fin_year,

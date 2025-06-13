@@ -27,9 +27,9 @@ base_dir = os.path.dirname(os.path.abspath(__file__))
 SECRET_KEY = 'django-insecure-v%+g!%@hcrd)bitxnhjx4zuz9n$3o$n+l7r%c9qvyhb2%)140$'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = ['127.0.0.1','poolaccounts.srldc.in' ,'10.0.100.233']
 CORS_ORIGIN_ALLOW_ALL=True
 
 CORS_ORIGIN_WHITELIST = [
