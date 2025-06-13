@@ -44,7 +44,11 @@ def readDSMFile(path,acc_type,fin_year,week_no):
         in_df.columns =removeSpaceDf(in_df)
         # Drop rows with NaN values in 'PayableToPool/ReceviableFromPool' column
         # names changes from Entityt:E, UnderdrawlCharges(Rs):U ,OverdrawlCharges(Rs):O
-        in_df.columns=['E','U','O','Po','F','P']
+        try:
+          in_df.columns=['E','U','O','Po','F','P']
+        except : 
+          in_df.columns=['E','F','P']
+          
         in_df = in_df.dropna(subset=['P'])
         in_df=in_df[['E','F','P']]
         # rename the columns and append to dataframe
@@ -136,6 +140,7 @@ def readDSMFile(path,acc_type,fin_year,week_no):
           final_states_gen_list=pd.concat([final_states_gen_list ,in_df]) 
       count+=1
     
+    
     # now do the mapping of each states and generator , if not mapped send to user for manual mapping
     # get all users 
     all_users=Registration.objects.filter(Q(end_date__isnull=True)|Q(end_date__gte=timezone.now()))
@@ -174,7 +179,7 @@ def readDSMFile(path,acc_type,fin_year,week_no):
     mapped_df['Fin_year'] =fin_year
     mapped_df['Week_no'] =week_no
     # default revision 0
-    mapped_df['Revision_no'] =0
+    mapped_df['Revision_no'] = 0
     # Define the desired column order
     desired_order = ['Acc_type', 'Fin_year', 'Week_no','Entity','Fin_code','DevFinal','PayRcv','Revision_no']
     # Reorder columns using reindex
@@ -220,11 +225,13 @@ def readSRASFile(path,acc_type,fin_year,week_no):
     mapping = {'Payable by SRAS Provider': 'Payable', 'Receivable to SRAS Provider': 'Receivable'}
     # Replace values in the rows using the dictionary
     final_df=sras_df.copy()
-    
-    final_df.columns=['SNo', 'S', 'SRAS-Up(MWHr)(A)', 'SRAS-Down(MWHr)(B)',
-       'NetEnergy(MWh)(C)=(A)-(B)', 'EnergyCharges/Compensationcharges(Rs)(D)',
-       'ActualPerformance(%)', 'IncentiveRate(paise/kWh)', 'Incentive(Rs)(E)',
-       'T','P']
+    try:
+      final_df.columns=['SNo', 'S', 'SRAS-Up(MWHr)(A)', 'SRAS-Down(MWHr)(B)',
+        'NetEnergy(MWh)(C)=(A)-(B)', 'EnergyCharges/Compensationcharges(Rs)(D)',
+        'ActualPerformance(%)', 'IncentiveRate(paise/kWh)', 'Incentive(Rs)(E)',
+        'T','P']
+    except:
+      final_df.columns = ['S' ,'T' ,'P']
     # Remove trailing spaces from the 'P' column
     final_df['P'] = final_df['P'].str.strip()
     # rename the columns
@@ -310,12 +317,15 @@ def readTRASFile(path,acc_type,fin_year,week_no):
     mapping = {'Payable by TRAS Provider': 'Payable', 'Receivable to TRAS Provider': 'Receivable'}
     # Replace values in the rows using the dictionary
     final_df=tras_df.copy()
-    final_df.columns=['S.No', 'T',
-      'EnergyscheduledunderShortfall/EmergencyTRAS-Up(MWh)(A)',
-      'Totalcharges/Compensationchargesforshortfall/EmergencyTRAS-Up(Rs)(B)',
-      'EnergyscheduledunderShortfall/EmergencyTRAS-Down(MWh)(C)',
-      'Totalcharges/Compensationchargesforshortfall/EmergencyTRAS-DowntobepaidbacktoPool(Rs)(D)',
-      'N','P' ]
+    try:
+      final_df.columns=['S.No', 'T',
+        'EnergyscheduledunderShortfall/EmergencyTRAS-Up(MWh)(A)',
+        'Totalcharges/Compensationchargesforshortfall/EmergencyTRAS-Up(Rs)(B)',
+        'EnergyscheduledunderShortfall/EmergencyTRAS-Down(MWh)(C)',
+        'Totalcharges/Compensationchargesforshortfall/EmergencyTRAS-DowntobepaidbacktoPool(Rs)(D)',
+        'N','P' ]
+    except:
+      final_df.columns = ['T' ,'N' ,'P']
     # rename the columns
     # Remove trailing spaces from the 'P' column
     final_df['P'] = final_df['P'].str.strip()
@@ -399,12 +409,15 @@ def readSCUCFile(path,acc_type,fin_year,week_no):
     mapping = {'Receivable by Pool Account': 'Payable', 'Payable from Pool Account': 'Receivable'}
     # Replace values in the rows using the dictionary
     final_df=scuc_df.copy()
-    final_df.columns=['S.No', 'S',
-      'EnergyscheduledunderShortfall/EmergencyTRAS-Up(MWh)(A)',
-      'Totalcharges/Compensationchargesforshortfall/EmergencyTRAS-Up(Rs)(B)',
-      'EnergyscheduledunderShortfall/EmergencyTRAS-Down(MWh)(C)',
-      'Totalcharges/Compensationchargesforshortfall/EmergencyTRAS-DowntobepaidbacktoPool(Rs)(D)',
-      'N','P' ]
+    try:
+      final_df.columns=['S.No', 'S',
+        'EnergyscheduledunderShortfall/EmergencyTRAS-Up(MWh)(A)',
+        'Totalcharges/Compensationchargesforshortfall/EmergencyTRAS-Up(Rs)(B)',
+        'EnergyscheduledunderShortfall/EmergencyTRAS-Down(MWh)(C)',
+        'Totalcharges/Compensationchargesforshortfall/EmergencyTRAS-DowntobepaidbacktoPool(Rs)(D)',
+        'N','P' ]
+    except:
+      final_df.columns = ['S' ,'N' ,'P']
     # Remove trailing spaces from the 'P' column
     final_df['P'] = final_df['P'].str.strip()
     # rename the columns
@@ -486,7 +499,10 @@ def readCONGFile(path,acc_type,fin_year,week_no):
     mapping = {'Receivable from Pool': 'Receivable', 'Payable to Pool': 'Payable'}
     # Replace values in the rows using the dictionary
     final_df=cong_df.copy()
-    final_df.columns=['S.No', 'Entity','TotalDeviation','N','P' ]
+    try:
+      final_df.columns=['S.No', 'Entity','TotalDeviation','N','P' ]
+    except:
+      final_df.columns = ['Entity' ,'N' ,'P']
     # Remove trailing spaces from the 'P' column
     final_df['P'] = final_df['P'].str.strip()
     # rename the columns
@@ -568,18 +584,20 @@ def readMBASFile(path,acc_type,fin_year,week_no):
     mbas_df.columns = removeSpaceDf(mbas_df)
     # Replace values in the rows using the dictionary
     final_df=mbas_df.copy()
-
-    final_df.columns=['S.No', 'T', 'DAMTRAS-UpCleared(MWHr)(A)',
-       'DAMTRAS-UpEnergyScheduled(MWHr)(B)', 'DAMTRASUpEnergyCharges(Rs.)(C)',
-       'DAMTRASUpCommitmentCharges(Rs.)(D)', 'RTMTRAS-UpCleared(MWHr)(E)',
-       'RTMTRAS-UpEnergyScheduled(MWHr)(F)', 'RTMTRASUpEnergyCharges(Rs.)(G)',
-       'RTMTRASUpCommitmentCharges(Rs.)(H)',
-       'TotalCharges/compensationchargeforTRASUp(Rs)(I)=(C)+(D)+(G)+(H)',
-       'DAMTRAS-DownEnergyScheduled(MWHr)(J)',
-       'DAMTRAS-DownChargestobepaidbacktopool(Rs)(K)',
-       'RTMTRAS-DownEnergyScheduled(MWHr)(L)',
-       'RTMTRAS-DownChargestobepaidbacktopool(Rs)(M)',
-       'N','P']
+    try:
+      final_df.columns=['S.No', 'T', 'DAMTRAS-UpCleared(MWHr)(A)',
+        'DAMTRAS-UpEnergyScheduled(MWHr)(B)', 'DAMTRASUpEnergyCharges(Rs.)(C)',
+        'DAMTRASUpCommitmentCharges(Rs.)(D)', 'RTMTRAS-UpCleared(MWHr)(E)',
+        'RTMTRAS-UpEnergyScheduled(MWHr)(F)', 'RTMTRASUpEnergyCharges(Rs.)(G)',
+        'RTMTRASUpCommitmentCharges(Rs.)(H)',
+        'TotalCharges/compensationchargeforTRASUp(Rs)(I)=(C)+(D)+(G)+(H)',
+        'DAMTRAS-DownEnergyScheduled(MWHr)(J)',
+        'DAMTRAS-DownChargestobepaidbacktopool(Rs)(K)',
+        'RTMTRAS-DownEnergyScheduled(MWHr)(L)',
+        'RTMTRAS-DownChargestobepaidbacktopool(Rs)(M)',
+        'N','P']
+    except:
+      final_df.columns = ['T' ,'N' ,'P']
     # Remove trailing spaces from the 'P' column
     final_df['P'] = final_df['P'].str.strip()
     mapping = {'Receivable to Pool from TRAS Provider': 'Payable', 'Payable from Pool to TRAS Provider': 'Receivable'}
@@ -588,13 +606,11 @@ def readMBASFile(path,acc_type,fin_year,week_no):
     final_df.rename(columns={'T':'Entity','N':'DevFinal','P':'PayRcv'},inplace=True)
     # drop rows that contains values as 0
     # convert to numeric 
-
     try :
       final_df['DevFinal']=final_df['DevFinal'].apply(lambda x: x.replace(',',''))
     except :
       final_df['DevFinal']=final_df['DevFinal']
     
-
     # convert to numeric 
     final_df['DevFinal'] = pd.to_numeric(final_df['DevFinal'] , errors='coerce')
     # ignore if contains 0 values
@@ -657,8 +673,11 @@ def readREACFile(path,acc_type,fin_year,week_no):
       # reading DSM File , srpc_file_names (is a global variable declared in common.py)
       df=pd.read_csv(path+'\\Zip_Data\\'+srpc_file_names[acc_type])
       df.columns = removeSpaceDf(df)
-      df.columns=['Entity', 'MVAR_H', 'MVAR_L', 'NETMVAR', 'A','P']
-      
+      try:
+        df.columns=['Entity', 'MVAR_H', 'MVAR_L', 'NETMVAR', 'A','P']
+      except:
+        df.columns=['Entity', 'A','P']
+
       reac_df = df.dropna(subset=['P'])
       mapping = {'Receivable From Pool': 'Receivable', 'Payable To Pool': 'Payable'}
       

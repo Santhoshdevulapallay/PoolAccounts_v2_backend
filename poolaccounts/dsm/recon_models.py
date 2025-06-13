@@ -37,4 +37,4 @@ class ReconLastQuarterBalance(models.Model):
     Fin_code = models.CharField(max_length=10 ,blank=True)
     class Meta:
         db_table = 'recon_lastquarterbalance'
-        unique_together=['Acc_type','Fin_year','Quarter']
+        unique_together=['Acc_type','Fin_year','Quarter' ,'Fin_code']

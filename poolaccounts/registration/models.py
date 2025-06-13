@@ -204,3 +204,19 @@ class AuthUser(models.Model):
       class Meta:
             managed = False
             db_table = 'auth_user'
+
+
+class LCDetails(models.Model):
+      fincode=models.CharField(default=None,max_length=25 )
+      new_existing=models.CharField(default=None,max_length=25 )
+      ref_no=models.CharField(default=None,max_length=255,blank=True,null=True )
+      amount_inlacs=models.FloatField(default=None)
+      date_of_issue=models.DateField(default=None)
+      date_of_expiry=models.DateField(default=None,blank=True,null=True)
+      supporting_docs=models.TextField(default=None,blank=True,null=True)
+      remarks=models.CharField(max_length=255, default=None,blank=True,null=True)
+      
+      class Meta:
+            managed = True
+            db_table = 'lc_details'
+            unique_together=['fincode' ,'date_of_issue']

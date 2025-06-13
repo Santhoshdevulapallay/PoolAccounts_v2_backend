@@ -218,10 +218,6 @@ def reco_for_user(fin_code,startdate,enddate,acc_type):
 
             all_paid_inrange_list+= excess_payments_list
 
-
-        
-
-
         all_rcv_inrange_df=pd.DataFrame(receivables_qry.filter(rcvstatus_fk__Fin_code=fin_code).values('rcvstatus_fk__Week_no','rcvstatus_fk__Week_startdate','rcvstatus_fk__Week_enddate','rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date','rcvstatus_fk__Revision_no','rcvstatus_fk__Final_charges','Disbursed_amount','disbursed_date') , columns=['rcvstatus_fk__Week_no','rcvstatus_fk__Week_startdate','rcvstatus_fk__Week_enddate','rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date','rcvstatus_fk__Revision_no','rcvstatus_fk__Final_charges','Disbursed_amount','disbursed_date'])
         all_rcv_inrange_rev = all_rcv_inrange_df[all_rcv_inrange_df['rcvstatus_fk__Revision_no']>0]
         for _, row in all_rcv_inrange_rev.iterrows():
@@ -350,6 +346,7 @@ def reco_for_user(fin_code,startdate,enddate,acc_type):
 
         return all_paid_inrange_list,all_rcv_inrange_list
     except Exception as e:
+        
         return [] , []
 
 def userRecon(request):
@@ -753,7 +750,6 @@ def generateReconPDF(request):
         # convert Receivable List to dataframe
         receivable_df = pd.DataFrame(all_receivable_lst)
 
-
         for i in range(0,receivable_df.shape[0]):
             try :
                 receivable_df.at[i,0] = "Wk " + str(receivable_df.at[i,0])+"( "+receivable_df.at[i,1].strftime('%d-%m-%Y')+" to "+receivable_df.at[i,2].strftime('%d-%m-%Y')+" )"
@@ -788,12 +784,9 @@ def generateReconPDF(request):
 
         pdf_path = ReconPDF(start_date,end_date,in_data , payable_df.values.tolist() , receivable_df.values.tolist(),opening_balance[0],closing_balance[0])
         
-        
         return FileResponse(open(pdf_path,'rb'),content_type='application/pdf')
         
     except Exception as e:
-
-        print(e)
         return HttpResponse(str(e) , status = 404)
 
 
