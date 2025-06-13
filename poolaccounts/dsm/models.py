@@ -64,7 +64,7 @@ class Payments(models.Model):
       paystatus_fk=models.ForeignKey(DSMBaseModel,on_delete=models.SET_NULL,null=True)
       approved_date=models.DateTimeField(default=timezone.now )
       Is_disbursed=models.BooleanField(default=False,blank=True,null=True)
-
+      is_revision = models.BooleanField(default=False,blank=True,null=True)
       def __str__(self):
         return ""
       
@@ -79,6 +79,7 @@ class DSMReceivables(models.Model):
       iom_date=models.DateField(default=None,blank=True,null=True)
       disbursed_date=models.DateField(default=None,blank=True,null=True)
       neft_txnno=models.CharField(max_length=255,default=None,blank=True,null=True)
+      is_revision = models.BooleanField(default=False,blank=True,null=True)
       def __str__(self):
         return self.rcvstatus_fk
       

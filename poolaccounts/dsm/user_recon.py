@@ -66,15 +66,24 @@ def getLastReconSubmits(request):
 def reco_for_user(fin_code,startdate,enddate,acc_type):
     try:
         if acc_type == 'DSM':
-            basemodel_obj = DSMBaseModel.objects.filter(Q(Letter_date__range=[startdate,enddate],Revision_no =0))
+            basemodel_obj = DSMBaseModel.objects.filter(Q(Letter_date__range=[startdate,enddate]))
 
             basemodel_qry = basemodel_obj.filter(Q(PayableorReceivable='Payable',payments__Paid_date__isnull=True ))
             basemodel_qry_rcv = basemodel_obj.filter(Q(PayableorReceivable='Receivable',dsmreceivables__disbursed_date__isnull=True ))
             basemodel_qry_next_rcv = basemodel_obj.filter(Q(PayableorReceivable='Receivable',dsmreceivables__disbursed_date__gt = enddate ))
-            basemodel_qry_next_pay = basemodel_obj.filter(Q(PayableorReceivable='Payable',payments__Paid_date__gt=enddate ))
-
-            payments_model_qry = Payments.objects.filter(Paid_date__range=[startdate,enddate])
-            receivables_qry = DSMReceivables.objects.filter(disbursed_date__range=[startdate,enddate])
+            basemodel_qry_next_pay = basemodel_obj.filter(Q(PayableorReceivable='Payable',payments__Paid_date__gt=enddate))
+            
+            payments_model_qry = Payments.objects.filter(Paid_date__range=[startdate,enddate],is_revision=False)
+            receivables_qry = DSMReceivables.objects.filter(disbursed_date__range=[startdate,enddate],is_revision=False)
+            
+            rev_payments_qry = RevisionPayments.objects.filter(Paid_date__range=[startdate,enddate])
+            basemodel_obj_rev = RevisionBaseModel.objects.filter(Q(Letter_date__range=[startdate, enddate], Acc_type='DSM_REVISION'))
+            receivables_qry_rev = RevisionReceivables.objects.filter(disbursed_date__range=[startdate,enddate])
+            
+            basemodel_qry_rcv_rev = basemodel_obj_rev.filter(Q(PayableorReceivable='Receivable',revisionreceivables__disbursed_date__isnull=True ))
+            basemodel_qry_next_rcv_rev = basemodel_obj_rev.filter(Q(PayableorReceivable='Receivable',revisionreceivables__disbursed_date__gt = enddate ))
+            rev_basemodel_qry = basemodel_obj_rev.filter(Q(PayableorReceivable='Payable',revisionpayments__Paid_date__isnull=True ))
+            rev_basemodel_qry_next_pay = basemodel_obj_rev.filter(Q(PayableorReceivable='Payable',revisionpayments__Paid_date__gt=enddate))
 
         elif acc_type == 'REAC':
             basemodel_obj = REACBaseModel.objects.filter(Q(Letter_date__range=[startdate,enddate],Revision_no=0))
@@ -89,6 +98,17 @@ def reco_for_user(fin_code,startdate,enddate,acc_type):
 
             payments_model_qry = REACPayments.objects.filter(Paid_date__range=[startdate,enddate])
             receivables_qry = REACReceivables.objects.filter(disbursed_date__range=[startdate,enddate])
+            rev_payments_qry = RevisionPayments.objects.filter(Paid_date__range=[startdate,enddate])
+            basemodel_obj_rev = RevisionBaseModel.objects.filter(Q(Letter_date__range=[startdate, enddate], Acc_type='REAC_REVISION'))
+            receivables_qry_rev = RevisionReceivables.objects.filter(disbursed_date__range=[startdate,enddate])
+            
+            basemodel_qry_rcv_rev = basemodel_obj_rev.filter(Q(PayableorReceivable='Receivable',revisionreceivables__disbursed_date__isnull=True ))
+            basemodel_qry_next_rcv_rev = basemodel_obj_rev.filter(Q(PayableorReceivable='Receivable',revisionreceivables__disbursed_date__gt = enddate ))
+            rev_basemodel_qry = basemodel_obj_rev.filter(Q(PayableorReceivable='Payable',revisionpayments__Paid_date__isnull=True ))
+            rev_basemodel_qry_next_pay = basemodel_obj_rev.filter(Q(PayableorReceivable='Payable',revisionpayments__Paid_date__gt=enddate))
+            
+            
+
 
         elif acc_type == 'NET_AS':
             basemodel_obj = NetASBaseModel.objects.filter(Q(Letter_date__range=[startdate,enddate],Revision_no =0))
@@ -103,16 +123,70 @@ def reco_for_user(fin_code,startdate,enddate,acc_type):
 
             payments_model_qry = NetASPayments.objects.filter(Paid_date__range=[startdate,enddate])
             receivables_qry = NetASReceivables.objects.filter(disbursed_date__range=[startdate,enddate])
+            rev_payments_qry = RevisionPayments.objects.filter(Paid_date__range=[startdate,enddate])
 
-        all_paid_inrange_df = pd.DataFrame(payments_model_qry.filter(paystatus_fk__Fin_code=fin_code).values('paystatus_fk__Week_no','paystatus_fk__Week_startdate','paystatus_fk__Week_enddate','paystatus_fk__Final_charges','paystatus_fk__Letter_date','Paid_date','Paid_amount') , columns = ['paystatus_fk__Week_no','paystatus_fk__Week_startdate','paystatus_fk__Week_enddate','paystatus_fk__Final_charges','paystatus_fk__Letter_date','Paid_date','Paid_amount'])
+            basemodel_obj_rev = RevisionBaseModel.objects.filter(Q(Letter_date__range=[startdate, enddate], Acc_type='NETAS_REVISION'))
+            receivables_qry_rev = RevisionReceivables.objects.filter(disbursed_date__range=[startdate,enddate])
+            
+            basemodel_qry_rcv_rev = basemodel_obj_rev.filter(Q(PayableorReceivable='Receivable',revisionreceivables__disbursed_date__isnull=True ))
+            basemodel_qry_next_rcv_rev = basemodel_obj_rev.filter(Q(PayableorReceivable='Receivable',revisionreceivables__disbursed_date__gt = enddate ))
+            rev_basemodel_qry = basemodel_obj_rev.filter(Q(PayableorReceivable='Payable',revisionpayments__Paid_date__isnull=True ))
+            rev_basemodel_qry_next_pay = basemodel_obj_rev.filter(Q(PayableorReceivable='Payable',revisionpayments__Paid_date__gt=enddate))
+
+
+
+        all_paid_inrange_df = pd.DataFrame(payments_model_qry.filter(paystatus_fk__Fin_code=fin_code).values('paystatus_fk__Week_no','paystatus_fk__Week_startdate','paystatus_fk__Week_enddate','paystatus_fk__Revision_no','paystatus_fk__Final_charges','paystatus_fk__Letter_date','Paid_date','Paid_amount') , columns = ['paystatus_fk__Week_no','paystatus_fk__Week_startdate','paystatus_fk__Week_enddate','paystatus_fk__Revision_no','paystatus_fk__Final_charges','paystatus_fk__Letter_date','Paid_date','Paid_amount'])
+        all_paid_inrange_rev = all_paid_inrange_df[all_paid_inrange_df['paystatus_fk__Revision_no']>0]
+        for _,row in all_paid_inrange_rev.iterrows():
+            if acc_type == 'DSM' :
+                df_dsm_pay = DSMBaseModel.objects.filter(
+                    Week_no=row['paystatus_fk__Week_no'],
+                    Week_startdate=row['paystatus_fk__Week_startdate'],
+                    Week_enddate=row['paystatus_fk__Week_enddate'],
+                    Fin_code=fin_code,
+                    Revision_no=0
+                ).values('Final_charges','Letter_date')
+            elif acc_type == 'REAC':
+                df_dsm_pay = REACBaseModel.objects.filter(
+                    Week_no=row['paystatus_fk__Week_no'],
+                    Week_startdate=row['paystatus_fk__Week_startdate'],
+                    Week_enddate=row['paystatus_fk__Week_enddate'],
+                    Fin_code=fin_code,
+                    Revision_no=0
+                ).values('Final_charges','Letter_date')
+            elif acc_type == 'NET_AS':
+                df_dsm_pay = NetASBaseModel.objects.filter(
+                    Week_no=row['paystatus_fk__Week_no'],
+                    Week_startdate=row['paystatus_fk__Week_startdate'],
+                    Week_enddate=row['paystatus_fk__Week_enddate'],
+                    Fin_code=fin_code,
+                    Revision_no=0
+                ).values('Final_charges','Letter_date')   
+            all_paid_inrange_df.loc[all_paid_inrange_df['paystatus_fk__Week_no'] == row['paystatus_fk__Week_no'], 'paystatus_fk__Final_charges'] = df_dsm_pay[0]['Final_charges']
+            all_paid_inrange_df.loc[all_paid_inrange_df['paystatus_fk__Week_no'] == row['paystatus_fk__Week_no'], 'paystatus_fk__Letter_date'] = df_dsm_pay[0]['Letter_date']        
+        
+        all_paid_inrange_df.drop(columns=['paystatus_fk__Revision_no'], inplace=True)
         # calculate outstanding amount
+
         all_paid_inrange_df['Outstanding'] = all_paid_inrange_df['paystatus_fk__Final_charges']  - all_paid_inrange_df['Paid_amount'] 
         all_paid_inrange = all_paid_inrange_df.values.tolist()
         all_paid_inrange_list=[list(ele) for ele in all_paid_inrange]
 
-        not_paid_inrange=list(basemodel_qry.filter(Fin_code=fin_code).values_list('Week_no','Week_startdate','Week_enddate','Final_charges','Letter_date'))
+        not_paid_inrange_1=list(basemodel_qry.filter(Fin_code=fin_code).values_list('Week_no','Week_startdate','Week_enddate','Final_charges','Letter_date'))
+        
+        not_paid_inrange_rev = list(rev_basemodel_qry.filter(Fin_code=fin_code).values_list('Final_charges', 'Letter_date'))
+        not_paid_inrange_rev = [["Revision", pd.NaT, pd.NaT, ele[0], ele[1], '', 0] for ele in not_paid_inrange_rev]
+        
+        not_paid_inrange = not_paid_inrange_1+ not_paid_inrange_rev
 
-        paid_outrange = list(basemodel_qry_next_pay.filter(Fin_code=fin_code).values_list('Week_no','Week_startdate','Week_enddate','Final_charges','Letter_date'))
+        
+        paid_outrange_1 = list(basemodel_qry_next_pay.filter(Fin_code=fin_code).values_list('Week_no','Week_startdate','Week_enddate','Final_charges','Letter_date'))
+        paid_outrange_rev = list(rev_basemodel_qry_next_pay.filter(Fin_code=fin_code).values_list('Final_charges', 'Letter_date'))
+        paid_outrange_rev = [["Revision",pd.NaT, pd.NaT, ele[0], ele[1], '', 0] for ele in paid_outrange_rev]
+        paid_outrange = paid_outrange_1 + paid_outrange_rev
+        
+        
+        
         not_paid_inrange_list=[list(ele) for ele in not_paid_inrange]
         paid_outrange_list = [list(ele) for ele in paid_outrange]
         not_paid_inrange_list =  not_paid_inrange_list+paid_outrange_list
@@ -121,6 +195,17 @@ def reco_for_user(fin_code,startdate,enddate,acc_type):
             not_paid.append(0)
             all_paid_inrange_list.append(not_paid.copy())
         
+        
+        
+        all_paid_inrange_df_rev = pd.DataFrame(rev_payments_qry.filter(paystatus_fk__Fin_code=fin_code).values('paystatus_fk__Entity','paystatus_fk__Final_charges','paystatus_fk__Letter_date','Paid_date','Paid_amount') , columns = ['paystatus_fk__Entity','paystatus_fk__Final_charges','paystatus_fk__Letter_date','Paid_date','Paid_amount'])
+        if len(all_paid_inrange_df_rev):
+            all_paid_inrange_df_rev['paystatus_fk__Week_no'] = "Revision"
+            all_paid_inrange_df_rev['paystatus_fk__Week_startdate'] = pd.NaT
+            all_paid_inrange_df_rev['paystatus_fk__Week_enddate'] = pd.NaT
+            all_paid_inrange_df_rev = all_paid_inrange_df_rev[['paystatus_fk__Week_no', 'paystatus_fk__Week_startdate', 'paystatus_fk__Week_enddate', 'paystatus_fk__Final_charges', 'paystatus_fk__Letter_date', 'Paid_date', 'Paid_amount']]
+            all_paid_inrange_list += all_paid_inrange_df_rev.values.tolist()
+            
+            
         if acc_type == 'DSM':
             excess_model_qry = ExcessBaseModel.objects.filter(Paid_date__range = [startdate,enddate] )
             excess_payments_qry = list(excess_model_qry.filter(Fin_code = fin_code,).values_list('Acc_Type','Final_charges','Paid_date','Final_charges'))
@@ -132,9 +217,39 @@ def reco_for_user(fin_code,startdate,enddate,acc_type):
                 excess.append(0)
 
             all_paid_inrange_list+= excess_payments_list
-       
-        all_rcv_inrange_df=pd.DataFrame(receivables_qry.filter(rcvstatus_fk__Fin_code=fin_code,rcvstatus_fk__Revision_no =0).values('rcvstatus_fk__Week_no','rcvstatus_fk__Week_startdate','rcvstatus_fk__Week_enddate','rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date','rcvstatus_fk__Final_charges','Disbursed_amount','disbursed_date') , columns=['rcvstatus_fk__Week_no','rcvstatus_fk__Week_startdate','rcvstatus_fk__Week_enddate','rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date','rcvstatus_fk__Final_charges','Disbursed_amount','disbursed_date'])
 
+        all_rcv_inrange_df=pd.DataFrame(receivables_qry.filter(rcvstatus_fk__Fin_code=fin_code).values('rcvstatus_fk__Week_no','rcvstatus_fk__Week_startdate','rcvstatus_fk__Week_enddate','rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date','rcvstatus_fk__Revision_no','rcvstatus_fk__Final_charges','Disbursed_amount','disbursed_date') , columns=['rcvstatus_fk__Week_no','rcvstatus_fk__Week_startdate','rcvstatus_fk__Week_enddate','rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date','rcvstatus_fk__Revision_no','rcvstatus_fk__Final_charges','Disbursed_amount','disbursed_date'])
+        all_rcv_inrange_rev = all_rcv_inrange_df[all_rcv_inrange_df['rcvstatus_fk__Revision_no']>0]
+        for _, row in all_rcv_inrange_rev.iterrows():
+            if acc_type == 'DSM':
+                df_dsm_rcv = DSMBaseModel.objects.filter(
+                    Week_no=row['rcvstatus_fk__Week_no'],
+                    Week_startdate=row['rcvstatus_fk__Week_startdate'],
+                    Week_enddate=row['rcvstatus_fk__Week_enddate'],
+                    Fin_code=fin_code,
+                    Revision_no=0
+                ).values('Final_charges','Letter_date')
+            elif acc_type == 'REAC':    
+                df_dsm_rcv = REACBaseModel.objects.filter(
+                    Week_no=row['rcvstatus_fk__Week_no'],
+                    Week_startdate=row['rcvstatus_fk__Week_startdate'],
+                    Week_enddate=row['rcvstatus_fk__Week_enddate'],
+                    Fin_code=fin_code,
+                    Revision_no=0
+                ).values('Final_charges','Letter_date')
+            elif acc_type == 'NET_AS':
+                df_dsm_rcv = NetASBaseModel.objects.filter(
+                    Week_no=row['rcvstatus_fk__Week_no'],
+                    Week_startdate=row['rcvstatus_fk__Week_startdate'],
+                    Week_enddate=row['rcvstatus_fk__Week_enddate'],
+                    Fin_code=fin_code,
+                    Revision_no=0
+                ).values('Final_charges','Letter_date')
+            all_rcv_inrange_df.loc[all_rcv_inrange_df['rcvstatus_fk__Week_no'] == row['rcvstatus_fk__Week_no'], 'rcvstatus_fk__Final_charges'] = df_dsm_rcv[0]['Final_charges']
+            all_rcv_inrange_df.loc[all_rcv_inrange_df['rcvstatus_fk__Week_no'] == row['rcvstatus_fk__Week_no'], 'rcvstatus_fk__Letter_date'] = df_dsm_rcv[0]['Letter_date']
+
+
+        all_rcv_inrange_df.drop(columns=['rcvstatus_fk__Revision_no'], inplace=True)
         all_rcv_inrange_df['rcvstatus_fk__Letter_date'] = pd.to_datetime(all_rcv_inrange_df['rcvstatus_fk__Letter_date'])
         start_date = pd.to_datetime(startdate)
 
@@ -150,14 +265,70 @@ def reco_for_user(fin_code,startdate,enddate,acc_type):
 
         all_rcv_out_next_df['disbursed_date'] = pd.NaT
                 
-        all_rcv_outrange_df.columns = ['rcvstatus_fk__Week_no','rcvstatus__Week_startdate','rcvstatus__Week_enddate', 'rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date', 'rcvstatus_fk__Final_charges', 'Disbursed_amount', 'disbursed_date']
-        all_rcv_out_next_df.columns = ['rcvstatus_fk__Week_no','rcvstatus__Week_startdate','rcvstatus__Week_enddate', 'rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date', 'rcvstatus_fk__Final_charges', 'Disbursed_amount', 'disbursed_date']
+        all_rcv_outrange_df.columns = ['rcvstatus_fk__Week_no','rcvstatus_fk__Week_startdate','rcvstatus_fk__Week_enddate', 'rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date', 'rcvstatus_fk__Final_charges', 'Disbursed_amount', 'disbursed_date']
+        all_rcv_out_next_df.columns = ['rcvstatus_fk__Week_no','rcvstatus_fk__Week_startdate','rcvstatus_fk__Week_enddate', 'rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date', 'rcvstatus_fk__Final_charges', 'Disbursed_amount', 'disbursed_date']
         all_rcv_outrange_df['rcvstatus_fk__Letter_date'] = pd.to_datetime(all_rcv_outrange_df['rcvstatus_fk__Letter_date'])
         all_rcv_out_next_df['rcvstatus_fk__Letter_date'] = pd.to_datetime(all_rcv_out_next_df['rcvstatus_fk__Letter_date'])
 
+        all_rcv_inrange_df_rev = pd.DataFrame(receivables_qry_rev.filter(rcvstatus_fk__Fin_code=fin_code).values('rcvstatus_fk__Final_charges','rcvstatus_fk__Letter_date','Disbursed_amount','disbursed_date') , columns = ['rcvstatus_fk__Final_charges','rcvstatus_fk__Letter_date','Disbursed_amount','disbursed_date'])
+        
+        if len(all_rcv_inrange_df_rev): 
+            all_rcv_inrange_df_rev['rcvstatus_fk__Week_no'] = "Revision"
+            all_rcv_inrange_df_rev['rcvstatus_fk__Week_startdate'] = pd.NaT
+            all_rcv_inrange_df_rev['rcvstatus_fk__Week_enddate'] = pd.NaT
+            all_rcv_inrange_df_rev['rcvstatus_fk__Disbursement_date'] = pd.NaT
+            all_rcv_inrange_df_rev = all_rcv_inrange_df_rev[['rcvstatus_fk__Week_no', 'rcvstatus_fk__Week_startdate', 'rcvstatus_fk__Week_enddate', 'rcvstatus_fk__Letter_date', 'rcvstatus_fk__Disbursement_date', 'rcvstatus_fk__Final_charges', 'Disbursed_amount', 'disbursed_date']]
+        else:
+            all_rcv_inrange_df_rev = pd.DataFrame(columns=['rcvstatus_fk__Week_no', 'rcvstatus_fk__Week_startdate', 'rcvstatus_fk__Week_enddate', 'rcvstatus_fk__Letter_date', 'rcvstatus_fk__Disbursement_date', 'rcvstatus_fk__Final_charges', 'Disbursed_amount', 'disbursed_date'])
+
+        all_rcv_inrange_df_rev['rcvstatus_fk__Letter_date'] = pd.to_datetime(all_rcv_inrange_df_rev['rcvstatus_fk__Letter_date'])
+        all_rcv_inrange_df_rev.loc[all_rcv_inrange_df_rev['rcvstatus_fk__Letter_date'] < start_date, 'rcvstatus_fk__Final_charges'] = 0
+
+        
+        all_rcv_outrange_df_rev=pd.DataFrame(basemodel_qry_rcv_rev.filter(Fin_code=fin_code).values('Letter_date','Final_charges') , columns=['Letter_date','Final_charges'])
+
+        if len(all_rcv_outrange_df_rev):
+            all_rcv_outrange_df_rev['rcvstatus_fk__Week_no'] = "Revision"
+            all_rcv_outrange_df_rev['rcvstatus_fk__Week_startdate'] = pd.NaT
+            all_rcv_outrange_df_rev['rcvstatus_fk__Week_enddate'] = pd.NaT
+            all_rcv_outrange_df_rev['rcvstatus_fk__Disbursement_date'] = pd.NaT
+            all_rcv_outrange_df_rev['Disbursed_amount'] = 0
+            all_rcv_outrange_df_rev['disbursed_date'] =  pd.NaT
+
+            all_rcv_outrange_df_rev = all_rcv_outrange_df_rev[['rcvstatus_fk__Week_no', 'rcvstatus_fk__Week_startdate', 'rcvstatus_fk__Week_enddate', 'Letter_date', 'rcvstatus_fk__Disbursement_date', 'Final_charges', 'Disbursed_amount', 'disbursed_date']]
+
+
+        
+        else:
+            all_rcv_outrange_df_rev = pd.DataFrame(columns=['rcvstatus_fk__Week_no', 'rcvstatus_fk__Week_startdate', 'rcvstatus_fk__Week_enddate', 'Letter_date', 'rcvstatus_fk__Disbursement_date', 'Final_charges','Disbursed_amount', 'disbursed_date'])
+        
+
+        all_rcv_outrange_df_rev.columns = ['rcvstatus_fk__Week_no','rcvstatus_fk__Week_startdate','rcvstatus_fk__Week_enddate', 'rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date', 'rcvstatus_fk__Final_charges', 'Disbursed_amount', 'disbursed_date']
+        
+        all_rcv_out_next_df_rev = pd.DataFrame(basemodel_qry_next_rcv_rev.filter(Fin_code=fin_code).values('Letter_date','Final_charges') , columns=['Letter_date','Final_charges'])
+        if len(all_rcv_out_next_df_rev):    
+            all_rcv_out_next_df_rev['rcvstatus_fk__Week_no'] = "Revision"
+            all_rcv_out_next_df_rev['rcvstatus_fk__Week_startdate'] = pd.NaT
+            all_rcv_out_next_df_rev['rcvstatus_fk__Week_enddate'] = pd.NaT
+            all_rcv_out_next_df_rev['rcvstatus_fk__Disbursement_date'] = pd.NaT
+            all_rcv_out_next_df_rev['Disbursed_amount'] = 0 
+            all_rcv_out_next_df_rev['disbursed_date'] = pd.NaT
+            all_rcv_out_next_df_rev = all_rcv_out_next_df_rev[['rcvstatus_fk__Week_no', 'rcvstatus_fk__Week_startdate', 'rcvstatus_fk__Week_enddate', 'Letter_date', 'rcvstatus_fk__Disbursement_date', 'Final_charges','Disbursed_amount', 'disbursed_date']]
+
+        else:
+            all_rcv_out_next_df_rev = pd.DataFrame(columns=['rcvstatus_fk__Week_no', 'rcvstatus_fk__Week_startdate', 'rcvstatus_fk__Week_enddate', 'Letter_date', 'rcvstatus_fk__Disbursement_date', 'Final_charges','Disbursed_amount', 'disbursed_date'])
+        all_rcv_out_next_df_rev.columns = ['rcvstatus_fk__Week_no','rcvstatus_fk__Week_startdate','rcvstatus_fk__Week_enddate', 'rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date', 'rcvstatus_fk__Final_charges', 'Disbursed_amount', 'disbursed_date']    
+
+
         all_rcv_inrange_df_1 = pd.concat([all_rcv_inrange_df,all_rcv_outrange_df],ignore_index=True).sort_values(by='rcvstatus_fk__Letter_date').reset_index(drop=True)
         
-        temp_rcv_inrange_df = pd.concat([all_rcv_inrange_df_1,all_rcv_out_next_df],ignore_index=True)
+        temp_rcv_inrange_df_1 = pd.concat([all_rcv_inrange_df_1,all_rcv_out_next_df],ignore_index=True)
+        
+        temp_rcv_inrange_df_2 = pd.concat([temp_rcv_inrange_df_1,all_rcv_inrange_df_rev],ignore_index=True)
+        
+        temp_rcv_inrange_df_3 = pd.concat([temp_rcv_inrange_df_2,all_rcv_outrange_df_rev],ignore_index=True)
+        
+        temp_rcv_inrange_df = pd.concat([temp_rcv_inrange_df_3,all_rcv_out_next_df_rev],ignore_index=True)
 
         # Step 1: Group and sum Disbursed_amount
         temp_rcv_inrange_df['Disbursed_amount'] = pd.to_numeric(temp_rcv_inrange_df['Disbursed_amount'], errors='coerce')  # ensure numeric
@@ -169,9 +340,10 @@ def reco_for_user(fin_code,startdate,enddate,acc_type):
         temp_rcv_inrange_df.loc[duplicate_mask, 'rcvstatus_fk__Final_charges'] = 0
         # calculate Outstanding amount also
         temp_rcv_inrange_df['Outstanding'] = temp_rcv_inrange_df['rcvstatus_fk__Final_charges'] - temp_rcv_inrange_df['Disbursed_amount']
+        temp_rcv_inrange_df['rcvstatus_fk__Letter_date'] = pd.to_datetime(temp_rcv_inrange_df['rcvstatus_fk__Letter_date'])
 
         all_rcv_inrange_list = temp_rcv_inrange_df.sort_values(by='rcvstatus_fk__Letter_date').reset_index(drop=True).values.tolist()    
-        
+
         return all_paid_inrange_list,all_rcv_inrange_list
     except Exception as e:
         
@@ -409,7 +581,7 @@ def ReconPDF(start_date, end_date, in_data , payable_data , receivable_data,open
 
         # Create the row
         pdf.set_font("Times", "B" , 10)
-        pdf.cell(col1_width, 9, f'Opening balance as on {start_date.strftime("%d-%m-%Y")}',align = 'C' , border=1)
+        pdf.cell(col1_width, 9, f'Opening balance as on {start_date.strftime("%d-%m-%Y")} (A)',align = 'C' , border=1)
         pdf.cell(col2_width, 9,f'{opening_balance}', border=1,align = 'C' , ln=1)
         
         # ************************* Payable  Table ****************
@@ -481,8 +653,8 @@ def ReconPDF(start_date, end_date, in_data , payable_data , receivable_data,open
         print_table_with_wrapped_first_col(pdf, headers1, receivable_data, col_widths, max_height, line_height,authorized_img_path,entity_fc_name)
         pdf.ln()
         # Create the row
-        pdf.set_font("Times", "B" , 10)
-        pdf.cell(col1_width, 11, f'Closing balance in Rs. as on {end_date.strftime("%d-%m-%Y")}',align = 'C' , border=1)
+        pdf.set_font("Times", "B" , 12)
+        pdf.cell(col1_width, 11, f'Closing balance in Rs. as on {end_date.strftime("%d-%m-%Y")} i.e., D = A+(B-C)',align = 'C' , border=1)
         pdf.cell(col2_width, 11, f'{closing_balance}', border=1,align = 'C' , ln=1)
         #pdf = addSignBottom(pdf , authorized_img_path , entity_fc_name,"Praharsha Korangi (Dy. Manager)")
         # ************************** Last Page ***********************
@@ -518,6 +690,7 @@ def generateReconPDF(request):
         fin_year = in_data['formdata']['fin_year']
         quarter = in_data['formdata']['quarter']
         acc_type = in_data['formdata']['acc_type']
+
         if not checkBillsNotified(acc_type , fin_year , quarter):
             return HttpResponse( 'Bills not notified ', status = 404)
         
@@ -537,65 +710,79 @@ def generateReconPDF(request):
         all_payable_lst , all_receivable_lst = reco_for_user(fin_code,start_date,end_date,acc_type)
         o_b = ReconLastQuarterBalance.objects.filter(Fin_code = fin_code, Acc_type =acc_type ,as_on_date = start_date-timedelta(days=1)).values()
         df_o_b = pd.DataFrame.from_records(o_b)
-       
+
         # convert Payable List to dataframe and do some modifications
         payable_df = pd.DataFrame(all_payable_lst)
-        
-        for i in range(0,payable_df.shape[0]):
-            payable_df.at[i,0] = "Wk " + str(payable_df.at[i,0])+"( "+payable_df.at[i,1].strftime('%d-%m-%Y')+" to "+payable_df.at[i,2].strftime('%d-%m-%Y')+" )"
-        payable_df = payable_df[[0,3,4,5,6,7]]
-        payable_df.columns = [0,1,2,3,4,5]
-        payable_df = payable_df.sort_values(by=payable_df.columns[2])
 
-        payable_df[5] = payable_df[1] - payable_df[4]
-        if len(payable_df) :
-            payable_df.at[len(payable_df),0] = 'TOTAL'
-            payable_df.at[len(payable_df)-1,1] = payable_df[1].sum()
-            payable_df.at[len(payable_df)-1,4] = payable_df[4].sum()
-            payable_df.at[len(payable_df)-1,5] = payable_df[5].sum()
+        if not payable_df.empty:
+            for i in range(0, payable_df.shape[0]):
+                try :
+                    payable_df.at[i, 0] = "Wk " + str(payable_df.at[i, 0]) + "( " + payable_df.at[i, 1].strftime('%d-%m-%Y') + " to " + payable_df.at[i, 2].strftime('%d-%m-%Y') + " )"
+                except Exception as e:
+                    payable_df.at[i, 0] = str(payable_df.at[i, 0]) + " dated "  + payable_df.at[i, 4].strftime('%d-%m-%Y')  
+            payable_df = payable_df[[0, 3, 4, 5, 6, 7]]
+            payable_df.columns = [0, 1, 2, 3, 4, 5]
+            payable_df = payable_df.sort_values(by=payable_df.columns[2])
 
+            payable_df[5] = payable_df[1] - payable_df[4]
 
-        payable_df.fillna('' , inplace=True)
-        total1 = payable_df[5].sum()
-        payable_df[2] = pd.to_datetime(payable_df[2]).dt.strftime('%d-%m-%Y')
-        payable_df[3] = pd.to_datetime(payable_df[3]).dt.strftime('%d-%m-%Y')
-        payable_df[1]=payable_df[1].apply(lambda x:format_indian_currency_withoutsymbol(x)) #final charges
-        payable_df[4]=payable_df[4].apply(lambda x:format_indian_currency_withoutsymbol(x)) #paid amount
-        payable_df[5]=payable_df[5].apply(lambda x:format_indian_currency_withoutsymbol(x)) #outstanding
-        payable_df.fillna('--' , inplace=True)
-        payable_df.at[len(payable_df)-1,2] = ' '
-        payable_df.at[len(payable_df)-1,3] = ' '
+            if len(payable_df):
+                total1 = payable_df[5].sum()
+                payable_df.at[len(payable_df), 0] = 'TOTAL (B)'
+                payable_df.at[len(payable_df) - 1, 1] = payable_df[1].sum()
+                payable_df.at[len(payable_df) - 1, 4] = payable_df[4].sum()
+                payable_df.at[len(payable_df) - 1, 5] = payable_df[5].sum()
+
+                payable_df.fillna('', inplace=True)
+
+                payable_df[2] = pd.to_datetime(payable_df[2]).dt.strftime('%d-%m-%Y')
+                payable_df[3] = pd.to_datetime(payable_df[3]).dt.strftime('%d-%m-%Y')
+                payable_df[1] = payable_df[1].apply(lambda x: format_indian_currency_withoutsymbol(x))  # final charges
+                payable_df[4] = payable_df[4].apply(lambda x: format_indian_currency_withoutsymbol(x))  # paid amount
+                payable_df[5] = payable_df[5].apply(lambda x: format_indian_currency_withoutsymbol(x))  # outstanding
+                payable_df.fillna('--', inplace=True)
+                payable_df.at[len(payable_df) - 1, 2] = ' '
+                payable_df.at[len(payable_df) - 1, 3] = ' '
+        else:
+            payable_df = pd.DataFrame(columns=[0, 1, 2, 3, 4, 5])
+            total1 = 0
 
         # convert Receivable List to dataframe
         receivable_df = pd.DataFrame(all_receivable_lst)
-       
 
         for i in range(0,receivable_df.shape[0]):
-            receivable_df.at[i,0] = "Wk " + str(receivable_df.at[i,0])+"( "+receivable_df.at[i,1].strftime('%d-%m-%Y')+" to "+receivable_df.at[i,2].strftime('%d-%m-%Y')+" )"
-        receivable_df = receivable_df[[0,3,4,5,6,9]]
+            try :
+                receivable_df.at[i,0] = "Wk " + str(receivable_df.at[i,0])+"( "+receivable_df.at[i,1].strftime('%d-%m-%Y')+" to "+receivable_df.at[i,2].strftime('%d-%m-%Y')+" )"
+            except Exception as e:
+                receivable_df.at[i,0] = str(receivable_df.at[i,0])+" dated "+receivable_df.at[i,3].strftime('%d-%m-%Y')
+        receivable_df = receivable_df[[0,3,4,5,6,7]]
         receivable_df.columns = [0,1,2,3,4,5]
 
         receivable_df = receivable_df.sort_values(by=payable_df.columns[1])
         
         if len(receivable_df) :
-            receivable_df.at[len(receivable_df),0] = 'Total'
+            total2 = receivable_df[5].sum()
+            receivable_df.at[len(receivable_df),0] = 'Total(C)'
             receivable_df.loc[len(receivable_df)-1,2] = receivable_df[2].sum()
             receivable_df.loc[len(receivable_df)-1,3] = receivable_df[3].sum()
             receivable_df.loc[len(receivable_df)-1,5] = receivable_df[5].sum()
-        total2 = receivable_df[5].sum()
-        receivable_df[1] = pd.to_datetime(receivable_df[1]).dt.strftime('%d-%m-%Y')
-        receivable_df[4] = pd.to_datetime(receivable_df[4]).dt.strftime('%d-%m-%Y')
-        receivable_df[2]=receivable_df[2].apply(lambda x:format_indian_currency_withoutsymbol(x))
-        receivable_df[3]=receivable_df[3].apply(lambda x:format_indian_currency_withoutsymbol(x))
-        receivable_df[5]=receivable_df[5].apply(lambda x:format_indian_currency_withoutsymbol(x))
-        receivable_df.fillna('--' , inplace=True)
-        receivable_df.loc[len(receivable_df)-1,1] = ' '
-        receivable_df.loc[len(receivable_df)-1,4] = ' '
-        opening_balance = df_o_b['Amount'].apply(lambda x:format_indian_currency_withoutsymbol(x))
-        closing_balance = (df_o_b['Amount'] + (total1 -total2)).apply(lambda x:format_indian_currency_withoutsymbol(x))
-       
-        pdf_path = ReconPDF(start_date,end_date,in_data , payable_df.values.tolist() , receivable_df.values.tolist(),opening_balance[0],closing_balance[0])
         
+            receivable_df[1] = pd.to_datetime(receivable_df[1]).dt.strftime('%d-%m-%Y')
+            receivable_df[4] = pd.to_datetime(receivable_df[4]).dt.strftime('%d-%m-%Y')
+            receivable_df[2]=receivable_df[2].apply(lambda x:format_indian_currency_withoutsymbol(x))
+            receivable_df[3]=receivable_df[3].apply(lambda x:format_indian_currency_withoutsymbol(x))
+            receivable_df[5]=receivable_df[5].apply(lambda x:format_indian_currency_withoutsymbol(x))
+            receivable_df.fillna('--' , inplace=True)
+            receivable_df.loc[len(receivable_df)-1,1] = ' '
+            receivable_df.loc[len(receivable_df)-1,4] = ' '
+        else:
+            receivable_df = pd.DataFrame(columns=[0, 1, 2, 3, 4, 5])
+            total2 = 0
+        opening_balance = df_o_b['Amount'].apply(lambda x:format_indian_currency_withoutsymbol(x))
+
+        closing_balance = (df_o_b['Amount'] + (total1 -total2)).apply(lambda x:format_indian_currency_withoutsymbol(x))
+
+        pdf_path = ReconPDF(start_date,end_date,in_data , payable_df.values.tolist() , receivable_df.values.tolist(),opening_balance[0],closing_balance[0])
         
         return FileResponse(open(pdf_path,'rb'),content_type='application/pdf')
         

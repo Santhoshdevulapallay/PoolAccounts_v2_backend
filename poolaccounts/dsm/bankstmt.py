@@ -1117,14 +1117,16 @@ def approveRevisionPayments(row,fin_code):
                                                 Bank_type=row['ValueDate_fk_id__BankType'],
                                                 paystatus_fk=dsm_obj,
                                                 approved_date=datetime.now() ,
-                                                Is_disbursed = True
+                                                Is_disbursed = True,
+                                                is_revision = True
                                                 ).save()
                                     elif sub_row['PayableorReceivable'] == 'Receivable':
                                           DSMReceivables(
                                                 Disbursed_amount=sub_row['Diff_amount'],
                                                 rcvstatus_fk=dsm_obj,
                                                 disbursed_date=row['ValueDate_fk_id__ValueDate'],
-                                                neft_txnno=row['ValueDate_fk_id__Description']
+                                                neft_txnno=row['ValueDate_fk_id__Description'],
+                                                is_revision = True
                                           ).save()
 
                                     else: continue
