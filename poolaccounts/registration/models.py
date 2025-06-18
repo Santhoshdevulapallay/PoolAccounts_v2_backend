@@ -216,6 +216,12 @@ class LCDetails(models.Model):
       supporting_docs=models.TextField(default=None,blank=True,null=True)
       remarks=models.CharField(max_length=255, default=None,blank=True,null=True)
       
+      payable_weeks = models.IntegerField(default=None ,blank=True,null=True)
+      delayed_weeks = models.IntegerField(default=None,blank=True,null=True)
+      total_payable = models.FloatField(default=None,blank=True,null=True )
+      lc_amount = models.FloatField(default=None ,blank=True,null=True )
+      is_opened=models.BooleanField(default=False,blank=True,null=True)
+      sbi_concurrence=models.BooleanField(default=False,blank=True,null=True)
       class Meta:
             managed = True
             db_table = 'lc_details'

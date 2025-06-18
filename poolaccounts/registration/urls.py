@@ -7,13 +7,11 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 urlpatterns = [
-
       path('check_login/',views.login),
       path('logout/',views.logout),
       # get dashboard data
       path('get_dashboard_data/',views.getDashboardData),
       path('download_dasboard_bills/',views.downloadDashboardBill),
-
 
       #add bank and entity details
       path('new_registration/',views.newRegistration),
