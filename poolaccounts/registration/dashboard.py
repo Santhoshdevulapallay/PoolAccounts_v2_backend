@@ -51,8 +51,6 @@ def getDashboardData(request):
       try:
             request_data=json.loads(request.body)
             fincode = request_data['fincode']
-
-            
             # last week surplus , taking only latest disbursed value
             last_week_surplus_qry=list(DisbursementStatus.objects.filter(final_disburse=True).order_by('-Disbursed_date')[:1].values('Surplus_amt'))
             last_week_surplus_amt=last_week_surplus_qry[0]['Surplus_amt']
@@ -88,7 +86,7 @@ def getDashboardData(request):
             final_outstanding_df=pd.DataFrame([])
             # to show in dashboard considering only DSM and REAC
             for acc_type in ['DSM','REAC','NET_AS','Legacy','Shortfall']:
-                  filtered_df,grouped_df=getOustandingdf(acc_type)
+                  _,grouped_df=getOustandingdf(acc_type)
                   grouped_df['PoolAcc']=acc_type
                   final_outstanding_df=pd.concat([final_outstanding_df,grouped_df])
             
@@ -126,14 +124,13 @@ def getDashboardData(request):
             except :
                   pass
       
-            # disb_df = pd.DataFrame(DisbursedEntities.objects.all().values())          
-            # disb_date_df = pd.DataFrame(DisbursementStatus.objects.all().values())
+            disb_df = pd.DataFrame(DisbursedEntities.objects.filter(fin_code = fincode).order_by('-disstatus_fk__Disbursed_date','pool_acctype').values('pool_acctype','fin_year','week_no','final_charges','disstatus_fk__Disbursed_date') , columns=['pool_acctype','fin_year','week_no','final_charges','disstatus_fk__Disbursed_date']) 
+
             lc_details = list(LCDetails.objects.filter(fincode =fincode , date_of_expiry__lte = datetime.today()).values_list('amount_inlacs' , flat = True))
 
-            return JsonResponse([all_status,last_week_surplus_amt,final_outstanding_df.to_dict(orient='records'),dsm_sum,reac_sum,netas_sum,last_st_upload,legacy_sum,total,shortfall_sum,merged_df.to_dict(orient='records') , lc_details],safe=False)
+            return JsonResponse([all_status,last_week_surplus_amt,final_outstanding_df.to_dict(orient='records'),dsm_sum,reac_sum,netas_sum,last_st_upload,legacy_sum,total,shortfall_sum,merged_df.to_dict(orient='records') , lc_details , disb_df.to_dict(orient='records') ],safe=False)
 
       except Exception as e:
-            
             return HttpResponse('error occured',status=404)
       
 
@@ -142,10 +139,8 @@ def downloadDashboardBill(request):
             request_data=json.loads(request.body)
             acc_type = request_data['billtype']
             fincode = request_data['fincode']
-            # get the oustanding dues as on date
-            final_outstanding_df=pd.DataFrame([])
             # to show in dashboard considering only DSM and REAC
-            filtered_df,grouped_df=getOustandingdf(acc_type)
+            filtered_df,_=getOustandingdf(acc_type)
 
             sum = filtered_df[filtered_df['Fin_code']==fincode]
             sum = sum.drop(columns=['Fin_code'])
@@ -154,9 +149,11 @@ def downloadDashboardBill(request):
             
             parent_folder = os.path.abspath(os.path.join(base_dir, os.pardir))
             directory = os.path.join(parent_folder, 'outstanding' )
+            if not os.path.exists(directory):
+                  os.makedirs(directory)
+
             no_data_found_df=pd.DataFrame(['NO outstanding due , Please check'])
             full_path=os.path.join(directory, in_filename)
-
             if not sum.empty:
                   sum.to_csv(full_path,index=False,header=True)  
             else:
@@ -167,5 +164,4 @@ def downloadDashboardBill(request):
 
       except Exception as e:
             print(e)
-            
             return HttpResponse('error occured',status=404)

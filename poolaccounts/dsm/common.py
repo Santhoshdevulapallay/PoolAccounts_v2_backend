@@ -286,3 +286,15 @@ def checkLegacyStatus(finyear , weekno):
       else: legacy_dues = False
 
       return legacy_dues
+
+def get_quarter_end_date(quarter: str, year: int) -> datetime:
+      if quarter == "Q1":
+            return datetime(year, 6, 30)
+      elif quarter == "Q2":
+            return datetime(year, 9, 30)
+      elif quarter == "Q3":
+            return datetime(year, 12, 31)
+      elif quarter == "Q4":
+            return datetime(year + 1, 3, 31)
+      else:
+            raise ValueError("Quarter must be one of: Q1, Q2, Q3, Q4")

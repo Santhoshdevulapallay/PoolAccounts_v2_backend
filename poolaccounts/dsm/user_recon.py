@@ -6,7 +6,7 @@ import os
 import math
 from datetime import date,timedelta
 from fpdf import FPDF
-from .common import format_indian_currency_withoutsymbol
+from .common import format_indian_currency_withoutsymbol , get_quarter_end_date
 from registration.fetch_data import getFCName
 
 def get_quarter_dates(fin_year_str, quarter):
@@ -132,8 +132,6 @@ def reco_for_user(fin_code,startdate,enddate,acc_type):
             basemodel_qry_next_rcv_rev = basemodel_obj_rev.filter(Q(PayableorReceivable='Receivable',revisionreceivables__disbursed_date__gt = enddate ))
             rev_basemodel_qry = basemodel_obj_rev.filter(Q(PayableorReceivable='Payable',revisionpayments__Paid_date__isnull=True ))
             rev_basemodel_qry_next_pay = basemodel_obj_rev.filter(Q(PayableorReceivable='Payable',revisionpayments__Paid_date__gt=enddate))
-
-
 
         all_paid_inrange_df = pd.DataFrame(payments_model_qry.filter(paystatus_fk__Fin_code=fin_code).values('paystatus_fk__Week_no','paystatus_fk__Week_startdate','paystatus_fk__Week_enddate','paystatus_fk__Revision_no','paystatus_fk__Final_charges','paystatus_fk__Letter_date','Paid_date','Paid_amount') , columns = ['paystatus_fk__Week_no','paystatus_fk__Week_startdate','paystatus_fk__Week_enddate','paystatus_fk__Revision_no','paystatus_fk__Final_charges','paystatus_fk__Letter_date','Paid_date','Paid_amount'])
         all_paid_inrange_rev = all_paid_inrange_df[all_paid_inrange_df['paystatus_fk__Revision_no']>0]
@@ -284,7 +282,6 @@ def reco_for_user(fin_code,startdate,enddate,acc_type):
         all_rcv_inrange_df_rev['rcvstatus_fk__Letter_date'] = pd.to_datetime(all_rcv_inrange_df_rev['rcvstatus_fk__Letter_date'])
         all_rcv_inrange_df_rev.loc[all_rcv_inrange_df_rev['rcvstatus_fk__Letter_date'] < start_date, 'rcvstatus_fk__Final_charges'] = 0
 
-        
         all_rcv_outrange_df_rev=pd.DataFrame(basemodel_qry_rcv_rev.filter(Fin_code=fin_code).values('Letter_date','Final_charges') , columns=['Letter_date','Final_charges'])
 
         if len(all_rcv_outrange_df_rev):
@@ -297,12 +294,9 @@ def reco_for_user(fin_code,startdate,enddate,acc_type):
 
             all_rcv_outrange_df_rev = all_rcv_outrange_df_rev[['rcvstatus_fk__Week_no', 'rcvstatus_fk__Week_startdate', 'rcvstatus_fk__Week_enddate', 'Letter_date', 'rcvstatus_fk__Disbursement_date', 'Final_charges', 'Disbursed_amount', 'disbursed_date']]
 
-
-        
         else:
             all_rcv_outrange_df_rev = pd.DataFrame(columns=['rcvstatus_fk__Week_no', 'rcvstatus_fk__Week_startdate', 'rcvstatus_fk__Week_enddate', 'Letter_date', 'rcvstatus_fk__Disbursement_date', 'Final_charges','Disbursed_amount', 'disbursed_date'])
         
-
         all_rcv_outrange_df_rev.columns = ['rcvstatus_fk__Week_no','rcvstatus_fk__Week_startdate','rcvstatus_fk__Week_enddate', 'rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date', 'rcvstatus_fk__Final_charges', 'Disbursed_amount', 'disbursed_date']
         
         all_rcv_out_next_df_rev = pd.DataFrame(basemodel_qry_next_rcv_rev.filter(Fin_code=fin_code).values('Letter_date','Final_charges') , columns=['Letter_date','Final_charges'])
@@ -329,7 +323,7 @@ def reco_for_user(fin_code,startdate,enddate,acc_type):
         temp_rcv_inrange_df_3 = pd.concat([temp_rcv_inrange_df_2,all_rcv_outrange_df_rev],ignore_index=True)
         
         temp_rcv_inrange_df = pd.concat([temp_rcv_inrange_df_3,all_rcv_out_next_df_rev],ignore_index=True)
-
+        
         # Step 1: Group and sum Disbursed_amount
         temp_rcv_inrange_df['Disbursed_amount'] = pd.to_numeric(temp_rcv_inrange_df['Disbursed_amount'], errors='coerce')  # ensure numeric
         # drop Entity name column
@@ -343,10 +337,10 @@ def reco_for_user(fin_code,startdate,enddate,acc_type):
         temp_rcv_inrange_df['rcvstatus_fk__Letter_date'] = pd.to_datetime(temp_rcv_inrange_df['rcvstatus_fk__Letter_date'])
 
         all_rcv_inrange_list = temp_rcv_inrange_df.sort_values(by='rcvstatus_fk__Letter_date').reset_index(drop=True).values.tolist()    
-
+        
         return all_paid_inrange_list,all_rcv_inrange_list
     except Exception as e:
-        
+        print(e)
         return [] , []
 
 def userRecon(request):
@@ -361,7 +355,7 @@ def userRecon(request):
         
         start_date,end_date = get_quarter_dates(fin_year,quarter)
         all_payable_lst , all_receivable_lst = reco_for_user(fin_code,start_date,end_date,acc_type)
-
+        
         cleaned_payable_lst = removeNanValues(all_payable_lst)
         cleaned_receivable_lst = removeNanValues(all_receivable_lst)
 
@@ -829,15 +823,22 @@ def getUploadedCopies(request):
     try:
         in_data = json.loads(request.body)
         
-        signed_df = pd.DataFrame(ReconUploadStatus.objects.filter(Acc_type = in_data['acc_type'] ,Fin_year = in_data['fin_year'] , Quarter = in_data['quarter'] ,Fin_code__in = in_data['usr'] , Upload_status = in_data['status'] ).all().values() )
-       
-        if signed_df.empty:
-            return JsonResponse({'status': True ,'data' : [] } , safe=False) 
+        signed_df = pd.DataFrame(ReconUploadStatus.objects.filter(Acc_type = in_data['acc_type'] ,Fin_year = in_data['fin_year'] , Quarter = in_data['quarter'] ,Fin_code__in = in_data['usr'] , Upload_status = in_data['status'] ).all().values() , columns=['Acc_type', 'Fin_year' , 'Quarter' ,'Fin_code','Upload_status' ,'Uploaded_time','File_path' ,'Admin_remarks' 'Admin_uploaded_time' ] )
+        
+        # if signed_df.empty:
+        #     return JsonResponse({'status': True ,'data' : [] } , safe=False) 
         
         fc_names_df=pd.DataFrame(Registration.objects.filter(Q(end_date__isnull=True) , Q(fin_code__in = in_data['usr'])).values('fin_code','fees_charges_name'))
-        # merge df and
-        merge_df = pd.merge(signed_df , fc_names_df , left_on='Fin_code' , right_on = 'fin_code' , how = 'left')
-
+        if in_data['status'] == 'A':
+            # merge df and
+            merge_df = pd.merge(fc_names_df ,signed_df , left_on='fin_code' , right_on = 'Fin_code' , how = 'left')
+        else :
+            # merge df and
+            merge_df = pd.merge(signed_df , fc_names_df , left_on='Fin_code' , right_on = 'fin_code' , how = 'left')
+       
+        merge_df['Is_upload'] = merge_df['Uploaded_time'].notna()
+        merge_df.fillna('',inplace=True)
+        merge_df.sort_values(by=['fees_charges_name'] , inplace=True)
         return JsonResponse({'status': True ,'data' : merge_df.to_dict(orient='records') } , safe=False)
 
     except Exception as e:
@@ -848,6 +849,7 @@ def approveRejectSignedCopies(request):
     try:
         in_data = json.loads(request.body)
         selected_row = in_data['selected_row']
+        quarter_year = int(selected_row['Fin_year'][0:4])
         # exclude already rejected details
         ReconUploadStatus.objects.filter(
             Acc_type = selected_row['Acc_type'] ,
@@ -858,6 +860,15 @@ def approveRejectSignedCopies(request):
             Upload_status = in_data['approve_type'] ,
             Admin_remarks = in_data['admin_remarks'] 
         ) 
+        # update balance for next quarter
+        ReconLastQuarterBalance (
+            Acc_type = selected_row['Acc_type'] ,
+            Fin_year = selected_row['Fin_year'] ,
+            Quarter = selected_row['Quarter'] ,
+            as_on_date = get_quarter_end_date(selected_row['Quarter'], quarter_year) ,
+            Amount = in_data['opening_bal_nextquarter'] ,
+            Fin_code = selected_row['Fin_code'] 
+        ).save()
         message = 'Approved Successfully' if in_data['approve_type'] == 'A' else 'Rejected Successfully '
         return JsonResponse({'status': True ,'message' : message } , safe=False)
     except Exception as e:
