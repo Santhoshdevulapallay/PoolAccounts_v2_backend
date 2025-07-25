@@ -21,7 +21,7 @@ class Registration(models.Model):
       is_nclt=models.BooleanField(default=None,blank=True,null=True)
       filename=models.TextField(default=None,blank=True,null=True)
       remarks=models.TextField(default=None,blank=True,null=True)
-      username = models.CharField(max_length=15,default=None,blank=True,null=True)
+      username = models.CharField(max_length=25,default=None,blank=True,null=True)
       def __str__(self):
             return self.fees_charges_name
       

@@ -952,6 +952,14 @@ def saveBankPayments(request):
                                     else:
                                           return_msg ='Balance left is not enough to map'
                               else:
+                                    if pay['AccType'] == 'FLAGGED':
+                                          FlaggedTransactions(
+                                                bankstmt_fk = BankStatement.objects.get(id=row['id']) ,
+                                                entity = pay['Entity'] 
+                                          ).save()
+                                          # update BankStatement Txn to Mapped later once details confirms again revoke to Not Mapped
+                                          BankStatement.objects.filter(id=row['id']).update( IsMapped=True)
+
                                     return_msg=pay['Entity']+ ' Record Not Present ,Please check'
             return JsonResponse(return_msg,safe=False)
       except Exception as e:
