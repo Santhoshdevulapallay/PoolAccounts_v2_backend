@@ -16,7 +16,7 @@ class ReconUploadStatus(models.Model):
     
     class Meta:
         db_table = 'recon_uploadstatus'
-        unique_together=['Fin_year','Quarter','Fin_code','Upload_status']
+        unique_together=['Fin_year','Quarter','Fin_code','Upload_status','Acc_type']
 
 class ReconNotified(models.Model):
     Acc_type = models.CharField(max_length=15,default=None)
