@@ -337,3 +337,26 @@ def getWeekStartEndDates(request):
             return HttpResponse(extractdb_errormsg(e),status=404)
       
 
+# def createUsers(request):
+#       try:
+#             df =  pd.read_excel('users.xlsx')
+#             from django.contrib.auth.models import User
+            
+#             for _, row in df[66:].iterrows():
+#                   uu = User.objects.filter(username = row['username'])
+#                   if uu.count() > 0 :
+#                         print(f"{row['username']} already created")
+#                         continue
+
+#                   uu1 = User.objects.create_user(
+#                         username=row['username'],
+#                         password=row['password']
+#                   )
+#                   uu1.save()
+#                   Registration.objects.filter(fin_code = row['fin_code']).update(username=row['username'])
+#                   print(f"{row['username']} new user")
+      
+#       except Exception as e:
+#             print(e)
+#             return HttpResponse(extractdb_errormsg(e),status=404)
+      
