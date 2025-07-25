@@ -276,6 +276,61 @@ def processAllPayables(model_obj_qry ,iom_date,payrcv,prevwkstatus ,pool_acc,fin
             all_prev_payables.append(temp_rec)
         
         return all_payables,all_prev_payables
+    elif pool_acc == 'CONG':
+        current_week_payables_df=pd.DataFrame(CONGBaseModel.objects.filter(Fin_year=fin_year,Week_no=week_no,PayableorReceivable='Payable',Legacy_dues=False).values('Fin_year','Week_no','Entity','Fin_code','Final_charges','Due_date'))
+
+        current_week_payments_df=pd.DataFrame(CONGPayments.objects.filter(paystatus_fk__Fin_year=fin_year,paystatus_fk__Week_no=week_no).values('Paid_date','Paid_amount','Bank_type','paystatus_fk__Fin_year','paystatus_fk__Week_no','paystatus_fk__Entity'))
+
+        current_week_payments_df.rename(columns={'paystatus_fk__Fin_year':'Fin_year','paystatus_fk__Week_no':'Week_no','paystatus_fk__Entity':'Entity'},inplace=True)
+        
+
+        all_week_payables_df = pd.DataFrame(CONGBaseModel.objects.filter(PayableorReceivable='Payable',Legacy_dues=False).values('Fin_year','Week_no','Entity','Fin_code','Final_charges','Due_date'))
+        all_week_payments_df=pd.DataFrame(CONGPayments.objects.values('Paid_date','Paid_amount','Bank_type','paystatus_fk__Fin_year','paystatus_fk__Week_no','paystatus_fk__Entity'))
+        all_week_payments_df.rename(columns={'paystatus_fk__Fin_year':'Fin_year','paystatus_fk__Week_no':'Week_no','paystatus_fk__Entity':'Entity'},inplace=True)
+        merged_all_weeks = pd.merge(all_week_payables_df,all_week_payments_df,on=['Fin_year','Week_no','Entity'],how='left')
+        dis_status = pd.DataFrame(list(DisbursementStatus.objects.filter(final_disburse=True,legacy_status = False).order_by('-Disbursed_date').values('Disbursed_date')))
+        start_date = dis_status.at[1,"Disbursed_date"]
+        end_date = dis_status.at[0,"Disbursed_date"]
+        merged_all_weeks_filtered = merged_all_weeks[(merged_all_weeks['Paid_date'] >= start_date) & (merged_all_weeks['Paid_date'] <= end_date)]
+        temp_prev_weeks_payable = merged_all_weeks_filtered[(merged_all_weeks_filtered["Week_no"]<week_no) & (merged_all_weeks_filtered["Final_charges"] > 0)]
+
+        merged_df=pd.merge(current_week_payables_df,current_week_payments_df,on=['Fin_year','Week_no','Entity'],how='left')
+        merged_df=merged_df.fillna(0)
+        # merged_df.rename(columns={'Fin_year':'fin_year','Week_no':'week_no','Fin_code':'fin_code','Entity':'entity','Due_date':'due_date','Paid_date':'paid_date','Paid_amount':'paid_amount','Bank_type':'credited_bank'},inplace=True)
+        merged_df.rename(columns={'Fin_year':'fin_year','Week_no':'week_no','Fin_code':'fin_code','Entity':'entity'},inplace=True)
+        
+        prev_weeks_payable=temp_prev_weeks_payable.copy()
+        prev_weeks_payable.rename(columns={'Fin_year':'fin_year','Week_no':'week_no','Fin_code':'fin_code','Entity':'entity'},inplace=True)
+        
+        for _,row in merged_df.iterrows():
+            actual_payable_amt=row['Final_charges']
+            paid_amount=row['Paid_amount']
+            duetopool=actual_payable_amt-paid_amount
+            temp_rec=row.to_dict()
+            temp_rec['amount_payable']=format_indian_currency(actual_payable_amt)
+            temp_rec['due_date']=row['Due_date'].strftime('%d-%m-%Y') if row['Due_date'] else '--'
+            temp_rec['paid_date']=row['Paid_date'].strftime('%d-%m-%Y') if row['Paid_date'] else "--"
+            temp_rec['paid_amount']=format_indian_currency(row['Paid_amount'])
+            temp_rec['credited_bank']=row['Bank_type']
+            temp_rec['duetopool']=format_indian_currency(duetopool)
+            all_payables.append(temp_rec)
+
+        all_prev_payables = []
+        
+        for _,row in prev_weeks_payable.iterrows():
+            actual_payable_amt=row['Final_charges']
+            paid_amount=row['Paid_amount']
+            duetopool=actual_payable_amt-paid_amount
+            temp_rec=row.to_dict()
+            temp_rec['amount_payable']=format_indian_currency(actual_payable_amt)
+            temp_rec['due_date']=row['Due_date'].strftime('%d-%m-%Y') if row['Due_date'] else '--'
+            temp_rec['paid_date']=row['Paid_date'].strftime('%d-%m-%Y') if row['Paid_date'] else "--"
+            temp_rec['paid_amount']=format_indian_currency(row['Paid_amount'])
+            temp_rec['credited_bank']=row['Bank_type']
+            temp_rec['duetopool']=format_indian_currency(duetopool)
+            all_prev_payables.append(temp_rec)
+        
+        return all_payables,all_prev_payables
     elif pool_acc == 'Legacy':
         current_week_payables_df=pd.DataFrame(LegacyBaseModel.objects.filter(PayableorReceivable='Payable',Legacy_dues=True,Is_interregional = False).values('Fin_year','Week_no','Entity','Fin_code','Final_charges','Due_date'))
 
@@ -367,6 +422,12 @@ def processAllReceivables(poolacc_obj_qry ,iom_date,prevwkstatus,pool_acc,fin_ye
         #---current week disbursement-----#
         acc_basemodel_mdl=REACBaseModel
         acc_receivables_mdl=REACReceivables
+    
+    elif pool_acc == 'CONG':
+        #---current week disbursement-----#
+        acc_basemodel_mdl=CONGBaseModel
+        acc_receivables_mdl=CONGReceivables
+        
     elif pool_acc == "Legacy" :
         dsm_receivables_df=pd.DataFrame(DisbursedEntities.objects.filter(disstatus_fk__Disbursed_date=iom_date,pool_acctype="DSM",payrcv='R',is_prevweeks=prevwkstatus).values('fin_year','week_no','entity','fin_code','parent_table_id'),columns=['fin_year','week_no','entity','fin_code','parent_table_id'])
         for _,row in dsm_receivables_df.iterrows():
@@ -388,7 +449,7 @@ def processAllReceivables(poolacc_obj_qry ,iom_date,prevwkstatus,pool_acc,fin_ye
 
     else: 
         pass
-    
+
     current_week_receivables_df_base=pd.DataFrame(acc_basemodel_mdl.objects.filter(Fin_year=fin_year,Week_no=week_no,PayableorReceivable='Receivable',Legacy_dues=False).values('Fin_year','Week_no','Entity','Fin_code','Final_charges','Due_date') ,columns=['Fin_year','Week_no','Entity','Fin_code','Final_charges','Due_date'])
     current_week_receivables_df_rcv=pd.DataFrame(acc_receivables_mdl.objects.filter(rcvstatus_fk__Fin_year=fin_year,rcvstatus_fk__Week_no=week_no).values('disbursed_date','Disbursed_amount','rcvstatus_fk__Fin_year','rcvstatus_fk__Week_no','rcvstatus_fk__Entity') ,columns=['disbursed_date','Disbursed_amount','rcvstatus_fk__Fin_year','rcvstatus_fk__Week_no','rcvstatus_fk__Entity'])
     if not current_week_receivables_df_rcv.empty:
@@ -431,7 +492,8 @@ def processAllReceivables(poolacc_obj_qry ,iom_date,prevwkstatus,pool_acc,fin_ye
     pool_acc_fields = {
         'DSM': 'dsmreceivables__Disbursed_amount',
         'NET_AS': 'netasreceivables__Disbursed_amount',
-        'REAC': 'reacreceivables__Disbursed_amount'
+        'REAC': 'reacreceivables__Disbursed_amount',
+        'CONG': 'congreceivables__Disbursed_amount'
     }
     
     for _,row in receivables_df.iterrows():
@@ -449,6 +511,7 @@ def getCalSum(out_lst , colname):
         df[colname] = df[colname].str.replace('₹', '').str.replace(',', '').str.replace(' ', '').astype(float)
         return format_indian_currency(df[colname].sum())
     except Exception as e:
+      
         extractdb_errormsg(e)
         return None
     
@@ -652,7 +715,42 @@ def downloadIOM(request):
                 'prevwktotalreceived':getCalSum(locals()['legacy_all_receivables_df'],'disbursed_amount'),
                 'prevwkreceivabledue1':getCalSum(locals()['legacy_all_receivables_df'],'duetopool')
             }
+        elif acc_type == 'CONG':
+            doc = DocxTemplate("templates/Other_acc_template.docx")
+            model_obj_qry=CONGBaseModel.objects.all()
+            # first get the current week
+            cong_df=pd.DataFrame(model_obj_qry.distinct('Fin_year','Week_no').values('Fin_year','Week_no'))
+            cong_df.sort_values(['Fin_year','Week_no'],inplace=True)
+            fin_year = cong_df.iloc[-1]['Fin_year']
+            week_no = cong_df.iloc[-1]['Week_no']
+
             
+            locals()['reac_all_payables_df'],locals()['reac_prev_payables_df'] = processAllPayables(model_obj_qry,iom_date,'P',False,acc_type,fin_year,week_no)
+
+            #locals()['reac_prevweeks_receivables_df'] = processAllReceivables(model_obj_qry,iom_date,True,acc_type)  #True means Prev Weeks
+            locals()['reac_prevweeks_receivables_df'],locals()['reac_all_receivables_df'] = processAllReceivables(model_obj_qry,iom_date,True,acc_type,fin_year,week_no)     
+
+            # IOM header data
+            if locals()['reac_all_payables_df']:
+                temp_df=pd.DataFrame(locals()['reac_all_payables_df'])
+                finyear = temp_df['fin_year'].unique()[0]
+                weekno = temp_df['week_no'].unique()[0]
+                week_start_date,week_end_date=getWeekDates(finyear,weekno)
+            
+            acc_context={
+                'payables':locals()['reac_all_payables_df'], 
+                'totalpayable':getCalSum(locals()['reac_all_payables_df'] , 'amount_payable'),
+                'totalpaid':getCalSum(locals()['reac_all_payables_df'],'paid_amount'),
+                'duetopool':getCalSum(locals()['reac_all_payables_df'],'duetopool'),
+
+
+                'prevweeks_receivables':locals()['reac_all_receivables_df'], 
+                'totalreceived':getCalSum(locals()['reac_all_receivables_df'],'amount_receivable'),
+                'totaldisbursed':getCalSum(locals()['reac_all_receivables_df'],'disbursed_amount'),
+                'receivabledue':getCalSum(locals()['reac_all_receivables_df'],'duetopool'),
+
+                
+            }
         else:
             week_start_date,week_end_date =None,None
         
