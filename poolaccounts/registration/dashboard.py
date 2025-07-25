@@ -126,9 +126,26 @@ def getDashboardData(request):
       
             disb_df = pd.DataFrame(DisbursedEntities.objects.filter(fin_code = fincode).order_by('-disstatus_fk__Disbursed_date','pool_acctype').values('pool_acctype','fin_year','week_no','final_charges','disstatus_fk__Disbursed_date') , columns=['pool_acctype','fin_year','week_no','final_charges','disstatus_fk__Disbursed_date']) 
 
-            lc_details = list(LCDetails.objects.filter(fincode =fincode , date_of_expiry__lte = datetime.today()).values_list('amount_inlacs' , flat = True))
 
-            return JsonResponse([all_status,last_week_surplus_amt,final_outstanding_df.to_dict(orient='records'),dsm_sum,reac_sum,netas_sum,last_st_upload,legacy_sum,total,shortfall_sum,merged_df.to_dict(orient='records') , lc_details , disb_df.to_dict(orient='records') ],safe=False)
+
+            lc_qs = LCDetails.objects.filter(fincode=fincode).values('lc_amount', 'is_opened')
+            if lc_qs.exists():
+                  lc_details = list(lc_qs)
+            else:
+                  lc_details = [{'lc_amount': 0, 'is_opened': 'not_applicable'}]
+            
+            
+            lc_amount = lc_details[0]['lc_amount']*100000
+            is_opened = lc_details[0]['is_opened']
+
+            if is_opened is True or is_opened == "True":
+                    is_opened = "Opened"
+            elif is_opened == 'not_applicable':
+                    is_opened = "Not Applicable"
+            elif is_opened is False or is_opened == "False":
+                    is_opened = "Not Opened"
+            
+            return JsonResponse([all_status,last_week_surplus_amt,final_outstanding_df.to_dict(orient='records'),dsm_sum,reac_sum,netas_sum,last_st_upload,legacy_sum,total,shortfall_sum,merged_df.to_dict(orient='records') , lc_details , disb_df.to_dict(orient='records'),lc_amount,is_opened ],safe=False)
 
       except Exception as e:
             return HttpResponse('error occured',status=404)
