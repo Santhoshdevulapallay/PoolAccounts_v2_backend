@@ -6,7 +6,7 @@ from registration.extarctdb_errors import extractdb_errormsg
 from poolaccounts.settings import BASE_DIR ,base_dir
 import pandas as pd 
 from datetime import datetime
-from .models import DSMBaseModel,AccountCodeDetails,Payments
+from .models import DSMBaseModel,AccountCodeDetails,FlaggedTransactions
 from .mbas_models import MBASBaseModel
 from .netas_models import NetASBaseModel
 from .reac_models import REACBaseModel
@@ -342,6 +342,29 @@ def getUnMappedTxns(request):
     except Exception as e:
         return HttpResponse(extractdb_errormsg(e),status=400)
 
+def getFlaggedTxns(request):
+    try:
+        flagged_txn_df=pd.DataFrame(FlaggedTransactions.objects.filter(resolved=False).order_by('-bankstmt_fk__ValueDate').values('entity','bankstmt_fk__ValueDate','bankstmt_fk__Description','bankstmt_fk__Debit','bankstmt_fk__Credit','bankstmt_fk__BankType','id','bankstmt_fk__id'))
+        # remove nan values 
+        flagged_txn_df=flagged_txn_df.fillna('')
+        # import pdb ; pdb.set_trace()
+        print(flagged_txn_df.to_dict(orient='records') )
+        return JsonResponse(flagged_txn_df.to_dict(orient='records') , safe=False)
+    
+    except Exception as e:
+        return HttpResponse(extractdb_errormsg(e),status=400)
+
+def revokeTxns(request):
+    try:
+        txns = json.loads(request.body)
+        for tn in txns:
+            FlaggedTransactions.objects.filter(id = tn['id']).update(resolved = True)
+            # update Bank Statement also
+            BankStatement.objects.filter(id = tn['bankstmt_fk__id']).update(IsMapped=False)
+        return JsonResponse("success" , safe=False)
+    except Exception as e:
+        return HttpResponse(extractdb_errormsg(e),status=400)
+      
 def getOustandingdf_15(acc_type):
     try:
         today_date=datetime.today().date()

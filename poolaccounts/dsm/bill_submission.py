@@ -257,7 +257,7 @@ def storeSRASBills(main_bills_df,disbursement_dates_qry,due_date_qry ,acc_type,l
             main_bills_df.drop(columns=['id','Acc_type'] ,inplace=True)
 
             # Group by 'Fin_code' and aggregate
-            main_bills_df = main_bills_df.groupby('Fin_code', as_index=False).agg({
+            main_bills_df = main_bills_df.groupby(['Fin_code', 'PayRcv'], as_index=False).agg({
             'Fin_year': 'first',
             'Week_no': 'first',
             'Entity': 'first',
@@ -323,7 +323,7 @@ def storeTRASBills(main_bills_df,disbursement_dates_qry,due_date_qry ,acc_type,l
             # drop acc_type column
             main_bills_df.drop(columns=['id','Acc_type'] ,inplace=True)
             # Group by 'Fin_code' and aggregate
-            main_bills_df = main_bills_df.groupby('Fin_code', as_index=False).agg({
+            main_bills_df = main_bills_df.groupby(['Fin_code', 'PayRcv'], as_index=False).agg({
             'Fin_year': 'first',
             'Week_no': 'first',
             'Entity': 'first',
@@ -389,7 +389,7 @@ def storeSCUCBills(main_bills_df,disbursement_dates_qry,due_date_qry ,acc_type,l
             # drop acc_type column
             main_bills_df.drop(columns=['id','Acc_type'] ,inplace=True)
             # Group by 'Fin_code' and aggregate
-            main_bills_df = main_bills_df.groupby('Fin_code', as_index=False).agg({
+            main_bills_df = main_bills_df.groupby(['Fin_code', 'PayRcv'], as_index=False).agg({
             'Fin_year': 'first',
             'Week_no': 'first',
             'Entity': 'first',
@@ -454,7 +454,7 @@ def storeMBASBills(main_bills_df,disbursement_dates_qry,due_date_qry ,acc_type,l
                   # drop acc_type column
                   main_bills_df.drop(columns=['id','Acc_type'] ,inplace=True)
                   # Group by 'Fin_code' and aggregate
-                  main_bills_df = main_bills_df.groupby('Fin_code', as_index=False).agg({
+                  main_bills_df = main_bills_df.groupby(['Fin_code', 'PayRcv'], as_index=False).agg({
                   'Fin_year': 'first',
                   'Week_no': 'first',
                   'Entity': 'first',
@@ -523,7 +523,7 @@ def storeREACBills(main_bills_df,disbursement_dates_qry,due_date_qry ,acc_type,l
             # drop acc_type column
             main_bills_df.drop(columns=['id','Acc_type'] ,inplace=True)
             # Group by 'Fin_code' and aggregate
-            main_bills_df = main_bills_df.groupby('Fin_code', as_index=False).agg({
+            main_bills_df = main_bills_df.groupby(['Fin_code', 'PayRcv'], as_index=False).agg({
             'Fin_year': 'first',
             'Week_no': 'first',
             'Entity': 'first',
@@ -588,7 +588,7 @@ def storeCONGBills(main_bills_df,disbursement_dates_qry,due_date_qry ,acc_type,l
             # drop acc_type column
             main_bills_df.drop(columns=['id','Acc_type'] ,inplace=True)
             # Group by 'Fin_code' and aggregate
-            main_bills_df = main_bills_df.groupby('Fin_code', as_index=False).agg({
+            main_bills_df = main_bills_df.groupby(['Fin_code', 'PayRcv'], as_index=False).agg({
             'Fin_year': 'first',
             'Week_no': 'first',
             'Entity': 'first',

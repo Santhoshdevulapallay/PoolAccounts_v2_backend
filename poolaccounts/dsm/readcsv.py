@@ -34,12 +34,13 @@ def readDSMFile(path,acc_type,fin_year,week_no):
     infirm_table=[]
     infirm_table_df=pd.DataFrame([])
     final_states_gen_list=pd.DataFrame([])
-    
+    del dfs_list[2] # removing pumped storage
     for in_df in dfs_list:
       # drop NaN columns specially for InterRegional df
       in_df = in_df.dropna(axis=1,how='all') # Specify 'how' parameter to 'all' to drop columns containing all NaN values
       #*****Now this is for state and generators
       # States Part
+      
       if count == 0:
         in_df.columns =removeSpaceDf(in_df)
         # Drop rows with NaN values in 'PayableToPool/ReceviableFromPool' column
@@ -48,7 +49,7 @@ def readDSMFile(path,acc_type,fin_year,week_no):
           in_df.columns=['E','U','O','Po','F','P']
         except : 
           in_df.columns=['E','F','P']
-          
+        
         in_df = in_df.dropna(subset=['P'])
         in_df=in_df[['E','F','P']]
         # rename the columns and append to dataframe
@@ -68,6 +69,7 @@ def readDSMFile(path,acc_type,fin_year,week_no):
         # rename the columns and append to dataframe
         in_df.rename(columns={'F':'DevFinal' ,'P':'PayRcv'},inplace=True)
       elif count == 2:
+      
         # Interregional Part
         # changing the header 
         in_df.columns = in_df.iloc[0] 
@@ -75,10 +77,14 @@ def readDSMFile(path,acc_type,fin_year,week_no):
         in_df=in_df.iloc[1: ]
         in_df.columns = removeSpaceDf(in_df)
         # names changes from Entityt:E, UnderdrawlCharges(Rs):U ,OverdrawlCharges(Rs):O
-        in_df.columns=['E','F','P']
+        try:
+          in_df.columns=['E','U','O','D','F','P']
+        except:
+          in_df.columns=['E','F','P']
         # Drop rows with NaN values in 'Payable/Receviable' column
         in_df = in_df.dropna(subset=['P'])
         in_df=in_df[['E','F','P']]
+        
         # rename the columns and append to dataframe
         in_df.rename(columns={'F':'DevFinal' ,'P':'PayRcv'},inplace=True)
         # remove space from df rows
@@ -500,9 +506,11 @@ def readCONGFile(path,acc_type,fin_year,week_no):
     # Replace values in the rows using the dictionary
     final_df=cong_df.copy()
     try:
+      final_df = final_df.loc[:, ~final_df.columns.str.contains('^Unnamed')]
       final_df.columns=['S.No', 'Entity','TotalDeviation','N','P' ]
     except:
       final_df.columns = ['Entity' ,'N' ,'P']
+    
     # Remove trailing spaces from the 'P' column
     final_df['P'] = final_df['P'].str.strip()
     # rename the columns

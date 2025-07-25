@@ -65,7 +65,8 @@ urlpatterns = [
       path('get_outstanding_weekwise/', views.getOutstandingWeekWise),
       path('download_outstanding/', views.downloadOutstandingXL),
       path('get_unmappedtxn_details/', views.getUnMappedTxns),
-
+      path('get_flaggedtxn_details/',views.getFlaggedTxns),
+      path('revoke_flaggedtxns/',views.revokeTxns),
       # Interest section
       path('get_monthly_interestcalc/', views.getMonthlyIntersetCalc),
       path('download_interest_details/', views.downloadIntersetCalc),
@@ -121,5 +122,7 @@ urlpatterns = [
       path('get_uploaded_copies/', views.getUploadedCopies),
       path('approve_reject_signed_copies/', views.approveRejectSignedCopies),
       path('download_recon_uploaded_pdfs/', views.downloadUploadedPDFs),
+      # 
+      # path('create_users/', views.createUsers),
 ]
 

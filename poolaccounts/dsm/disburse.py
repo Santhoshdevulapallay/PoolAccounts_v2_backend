@@ -1136,6 +1136,8 @@ def finalDisbursement(request):
                             finalAccwiseDisbursement(filtered_df , TRASBaseModel,TRASReceivables)
                         elif p_type=='MBAS':
                             finalAccwiseDisbursement(filtered_df , MBASBaseModel,MBASReceivables)
+                        elif p_type=='CONG':
+                            finalAccwiseDisbursement(filtered_df , CONGBaseModel,CONGReceivables)
                         elif p_type=='IR':
                             finalAccwiseDisbursement(filtered_df , IRBaseModel,IRReceivables)
                         else:
@@ -1190,6 +1192,8 @@ def finalDisbursement(request):
                             finalAccwiseDisbursement(filtered_df , TRASBaseModel,TRASReceivables)
                         elif p_type=='MBAS':
                             finalAccwiseDisbursement(filtered_df , MBASBaseModel,MBASReceivables)
+                        elif p_type=='CONG':
+                            finalAccwiseDisbursement(filtered_df , CONGBaseModel,CONGReceivables)
                         elif p_type=='IR':
                             finalAccwiseDisbursement(filtered_df , IRBaseModel,IRReceivables)
                         else:continue

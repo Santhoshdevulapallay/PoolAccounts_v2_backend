@@ -370,3 +370,10 @@ class SignedIOMS(models.Model):
       
       class Meta:
             db_table = 'signed_ioms'
+
+class FlaggedTransactions(models.Model):
+      bankstmt_fk=models.ForeignKey(BankStatement,on_delete=models.SET_NULL,null=True )
+      resolved=models.BooleanField(default=False)
+      entity = models.CharField(default=None , max_length=255)
+      class Meta:
+            db_table = 'flagged_transactions'
