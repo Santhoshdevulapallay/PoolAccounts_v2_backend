@@ -383,6 +383,8 @@ def getLastDisbursedWk(request):
             net_as_disbursed_amount=getPoolDisbursedAmount(disbursed_entities_qry,'NET_AS')
             reac_disbursed_amount=getPoolDisbursedAmount(disbursed_entities_qry,'REAC')
             ir_disbursed_amount=getPoolDisbursedAmount(disbursed_entities_qry,'IR')
+            cong_disbursed_amount=getPoolDisbursedAmount(disbursed_entities_qry,'CONG')
+            
             
             dsm_status=partial_dis_status[0]['dsm']
             net_as_status=partial_dis_status[0]['net_as']
@@ -544,8 +546,9 @@ def transfertoLegacy(request):
 
         if len(intimate_to_NLDC):    
             return JsonResponse({'status' : False , 'message' :'Please check intimated to NLDC, if anything pending IR should be transfered!! '} , safe=False)
-        
+
         else:
+           
             data = dis_status[0]
             surplus_amt = int(data['Surplus_amt']) - int(to_be_transfer)
             legacy_surplus_amt = int(data['legacy_surplus_amt']) + int(to_be_transfer)
@@ -938,7 +941,7 @@ def storeDisbursedValues(request):
         return JsonResponse('success',safe=False)
 
     except Exception as e:
-        pdb.set_trace()
+      
         return HttpResponse(extractdb_errormsg(e),status=404)
 
 def getPaymentsConsideredForDisbursement(pool_acc,legacy_bills):

@@ -13,6 +13,8 @@ import os , random
 import pandas as pd
 from poolaccounts.settings import base_dir
 from dsm.user_recon import checkBillsNotified
+from .reconciliation import *
+from .user_recon import *
 
 def getPrevYearMonth(selected_month):
     # get closing balances of prev month (selected_monht in '2024-10' format)
@@ -113,61 +115,16 @@ def downloadReconReport(request):
         # Create the directory if it doesn't exist
         os.makedirs(directory)
    
-    if acc_type == 'DSM':
-        basemodel_obj = DSMBaseModel.objects.filter(Q(Letter_date__range=[startdate,enddate]) , Q(Revision_no = 0))
-
-        basemodel_qry = basemodel_obj.filter(Q(PayableorReceivable='Payable',payments__Paid_date__isnull=True ))
-        basemodel_qry_rcv = basemodel_obj.filter(Q(PayableorReceivable='Receivable',dsmreceivables__disbursed_date__isnull=True ))
-        basemodel_qry_next_rcv = basemodel_obj.filter(Q(PayableorReceivable='Receivable',dsmreceivables__disbursed_date__gt = end_date ))
-        basemodel_qry_next_pay = basemodel_obj.filter(Q(PayableorReceivable='Payable',payments__Paid_date__gt=end_date ))
-
-        payments_model_qry = Payments.objects.filter(Paid_date__range=[startdate,enddate])
-        receivables_qry = DSMReceivables.objects.filter(disbursed_date__range=[startdate,enddate])
-        basemodel_obj_rev = RevisionBaseModel.objects.filter(Q(Letter_date__range=[startdate,enddate]) , Q(Acc_type = 'DSM_REVISION'))
-
-
-    elif acc_type == 'REAC':
-        basemodel_obj = REACBaseModel.objects.filter(Q(Letter_date__range=[startdate,enddate]))
-
-        basemodel_qry = basemodel_obj.filter(Q(PayableorReceivable='Payable',reacpayments__Paid_date__isnull=True ))
-
-        basemodel_qry_rcv = basemodel_obj.filter(Q(PayableorReceivable='Receivable',reacreceivables__disbursed_date__isnull=True ))
-
-        basemodel_qry_next_rcv = basemodel_obj.filter(Q(PayableorReceivable='Receivable',reacreceivables__disbursed_date__gt = end_date ))
-
-        basemodel_qry_next_pay = basemodel_obj.filter(Q(PayableorReceivable='Payable',reacpayments__Paid_date__gt=end_date ))
-
-        payments_model_qry = REACPayments.objects.filter(Paid_date__range=[startdate,enddate])
-        receivables_qry = REACReceivables.objects.filter(disbursed_date__range=[startdate,enddate])
-        basemodel_obj_rev = RevisionBaseModel.objects.filter(Q(Letter_date__range=[startdate,enddate]) , Q(Acc_type = 'REAC_REVISION'))
-
-    elif acc_type == 'NET_AS':
-        basemodel_obj = NetASBaseModel.objects.filter(Q(Letter_date__range=[startdate,enddate]))
-
-        basemodel_qry = basemodel_obj.filter(Q(PayableorReceivable='Payable',netaspayments__Paid_date__isnull=True ))
-
-        basemodel_qry_rcv = basemodel_obj.filter(Q(PayableorReceivable='Receivable',netasreceivables__disbursed_date__isnull=True ))
-
-        basemodel_qry_next_rcv = basemodel_obj.filter(Q(PayableorReceivable='Receivable',netasreceivables__disbursed_date__gt = end_date ))
-
-        basemodel_qry_next_pay = basemodel_obj.filter(Q(PayableorReceivable='Payable',netaspayments__Paid_date__gt=end_date ))
-
-        payments_model_qry = NetASPayments.objects.filter(Paid_date__range=[startdate,enddate])
-        receivables_qry = NetASReceivables.objects.filter(disbursed_date__range=[startdate,enddate])
-        basemodel_obj_rev = RevisionBaseModel.objects.filter(Q(Letter_date__range=[startdate,enddate]) , Q(Acc_type = 'NETAS_REVISION'))
-    else:
-        return HttpResponse('error' , status = 404)
-
-    excess_model_qry = ExcessBaseModel.objects.filter(Paid_date__range = [startdate,enddate] )
     summary_sheet_data = [['Fin Code','Entity Name' , 'Closing Balance']]
 
     
     for user in all_users:
         try:
             fincode=user[1].replace(" ", "")
+            fincode = 'S0183'
             closing_balance_list = list(closing_balances_qry.filter(Fin_code = fincode).values_list('Closing_amount',flat=True))
             closing_balance = closing_balance_list[0] if len(closing_balance_list) else 0
-
+            
             source=wb.active
             
             target=wb.copy_worksheet(source)
@@ -182,140 +139,20 @@ def downloadReconReport(request):
             ws['A1'].value='DETAILS OF '+acc_type+' PAYMENT AND DISBURSEMENT of '+ str(user[0]) +'  DURING ('+(startdate.strftime("%d.%m.%Y"))+'-'+enddate.strftime("%d.%m.%Y") +')'
             
             start_payable, start_receivable = 6 , 6
-            # payables
-            #import pdb ; pdb.set_trace()
-            all_paid_inrange = list(payments_model_qry.filter(paystatus_fk__Fin_code=fincode , paystatus_fk__Revision_no = 0).values_list('paystatus_fk__Fin_year','paystatus_fk__Week_no','paystatus_fk__Entity','paystatus_fk__Final_charges','paystatus_fk__Letter_date','Paid_date','Paid_amount'))
+           
             
-            all_paid_inrange_list=[list(ele) for ele in all_paid_inrange]
-
-            not_paid_inrange=list(basemodel_qry.filter(Fin_code=fincode).values_list('Fin_year','Week_no','Entity','Final_charges','Letter_date'))
+            all_paid_inrange_list1 , all_rcv_inrange_list = reco_for_user(fincode,start_date,end_date,acc_type)
 
 
+            df_all_paid_inrange_list1 = pd.DataFrame(all_paid_inrange_list1)
             
-            #paid_inrange=list(basemodel_qry_prev.filter(Fin_code=fincode).values_list('Fin_year','Week_no','Entity','Final_charges','Letter_date'))
-
-            paid_outrange = list(basemodel_qry_next_pay.filter(Fin_code=fincode).values_list('Fin_year','Week_no','Entity','Final_charges','Letter_date'))
             
-            not_paid_inrange_list=[list(ele) for ele in not_paid_inrange]
-            paid_outrange_list = [list(ele) for ele in paid_outrange]
-            not_paid_inrange_list =  not_paid_inrange_list+paid_outrange_list
             
-            for not_paid in not_paid_inrange_list:
-                not_paid.append('')
-                not_paid.append(0)
-                all_paid_inrange_list.append(not_paid.copy())
-            df_reco = pd.DataFrame(all_paid_inrange_list)
-            if len(df_reco)>0:
-                df_reco.columns = ['Fin_year','Week_no','Entity','Final_charges','Letter_date','Paid_date','Paid_amount']
-                #df_reco.loc[df_reco['Week_no'] == 50, 'Final_charges'] = 0
-                df_reco.loc[df_reco.duplicated(subset=['Week_no', 'Entity', 'Final_charges'], keep='first'),'Final_charges'] = 0
-                all_paid_inrange_list1 = df_reco.values.tolist()
-            else : 
-                all_paid_inrange_list1 = all_paid_inrange_list
             
-
-            # get iom data
-            for iom in all_paid_inrange_list1:
-                dis_date=list(disbursed_entities_obj.filter(fin_year=iom[0],week_no=iom[1]).distinct().values_list('disstatus_fk__Disbursed_date',flat=True))
-                iom.insert(5, dis_date[0]) if len(dis_date) > 0 else iom.insert(5, '')
-                # modify WeekNo column to add Startdate and Enddate
-                start_end_date_list = list(week_start_enddates_obj.filter(fin_year=iom[0] , week_no=iom[1]).values_list('start_date','end_date'))
-                if len(start_end_date_list) > 0:
-                    start_date_in = start_end_date_list[0][0]
-                    end_date_in = start_end_date_list[0][1]
-
-                    full_date_str = str(iom[1]) +'(' +start_date_in.strftime('%d.%m.%Y') + '-' + end_date_in.strftime('%d.%m.%Y') + ' ) '
-                    # replace just week no with start and end dates
-                    iom[1] = full_date_str
-                # remove Fin year not required
-                iom.remove(iom[0])
-                
-                if iom[5] =='':
-                    pass
-                elif iom[3] < startdate and (startdate <= iom[5] <= enddate):
-                    iom[2] = 0
-                elif (startdate <= iom[3] <= enddate) and (iom[5] > enddate):
-                    iom[6] = 0
-                else :
-                    pass
-                
-                iom.append(float(iom[2]) - float(iom[6]))
-
-            #excess payments if any
-            excess_payments_qry = list(excess_model_qry.filter(Fin_code = fincode).values_list('Acc_Type','Entity','Final_charges','Paid_date','Final_charges'))
-            excess_payments_list=[list(ele) for ele in excess_payments_qry]
-
-            for excess in excess_payments_list:
-                excess.insert(3, None)
-                excess.insert(4, None)
-                excess.append(0)
-
-            all_paid_inrange_list1+= excess_payments_list
-            # Receivables
-            all_rcv_inrange_df=pd.DataFrame(receivables_qry.filter(rcvstatus_fk__Fin_code=fincode , rcvstatus_fk__Revision_no = 0).values('rcvstatus_fk__Week_no','rcvstatus_fk__Entity','rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date','rcvstatus_fk__Final_charges','Disbursed_amount','disbursed_date') , columns=['rcvstatus_fk__Week_no','rcvstatus_fk__Entity','rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date','rcvstatus_fk__Final_charges','Disbursed_amount','disbursed_date'])
+            df_all_paid_inrange_list1.drop_duplicates(inplace=True)
             
-            all_rcv_inrange_df['rcvstatus_fk__Letter_date'] = pd.to_datetime(all_rcv_inrange_df['rcvstatus_fk__Letter_date'])
-            all_rcv_inrange_df.loc[all_rcv_inrange_df['rcvstatus_fk__Letter_date'] < start_date, 'rcvstatus_fk__Final_charges'] = 0
-            all_rcv_inrange_df = all_rcv_inrange_df.drop(columns=['rcvstatus_fk__Letter_date'])
-            
-            all_rcv_outrange_df=pd.DataFrame(basemodel_qry_rcv.filter(Fin_code=fincode).values('Week_no','Entity','Disbursement_date','Final_charges') , columns=['Week_no','Entity','Disbursement_date','Final_charges'])
-            all_rcv_outrange_df['Disbursed_amount'] = 0
+            all_paid_inrange_list1 = df_all_paid_inrange_list1.values.tolist()
 
-            all_rcv_outrange_df['disbursed_date'] = pd.NaT
-
-            all_rcv_out_next_df = pd.DataFrame(basemodel_qry_next_rcv.filter(Fin_code=fincode).values('Week_no','Entity','Disbursement_date','Final_charges') , columns=['Week_no','Entity','Disbursement_date','Final_charges'])
-            all_rcv_out_next_df['Disbursed_amount'] = 0
-
-            all_rcv_out_next_df['disbursed_date'] = pd.NaT
-            
-            all_rcv_outrange_df.columns = ['rcvstatus_fk__Week_no', 'rcvstatus_fk__Entity', 'rcvstatus_fk__Disbursement_date', 'rcvstatus_fk__Final_charges', 'Disbursed_amount', 'disbursed_date']
-            all_rcv_out_next_df.columns = ['rcvstatus_fk__Week_no', 'rcvstatus_fk__Entity', 'rcvstatus_fk__Disbursement_date', 'rcvstatus_fk__Final_charges', 'Disbursed_amount', 'disbursed_date']
-
-            all_rcv_inrange_df_1 = pd.concat([all_rcv_inrange_df,all_rcv_outrange_df],ignore_index=True)
-            all_rcv_inrange_df = pd.concat([all_rcv_inrange_df_1,all_rcv_out_next_df],ignore_index=True)
-            
-            if not all_rcv_inrange_df.empty:
-                # Convert disbursed_date to datetime
-                all_rcv_inrange_df["disbursed_date"] = pd.to_datetime(all_rcv_inrange_df["disbursed_date"])
-                all_rcv_inrange_df["rcvstatus_fk__Disbursement_date"] = pd.to_datetime(all_rcv_inrange_df["rcvstatus_fk__Disbursement_date"])
-
-                # Group by Week_no and Entity
-                
-                grouped_df = all_rcv_inrange_df.groupby(
-                    ["rcvstatus_fk__Week_no", "rcvstatus_fk__Entity"]
-                ).agg({
-                        "rcvstatus_fk__Final_charges": "mean",
-                        "Disbursed_amount": "sum",
-                        "disbursed_date": "max",
-                        "rcvstatus_fk__Disbursement_date" : "max",
-                    }
-                ).reset_index()
-                
-                
-                # Extract date as datetime.date
-                grouped_df["disbursed_date"] = grouped_df["disbursed_date"].dt.date
-                grouped_df["rcvstatus_fk__Disbursement_date"] = grouped_df["rcvstatus_fk__Disbursement_date"].dt.date
-                
-                grouped_df.loc[grouped_df["rcvstatus_fk__Disbursement_date"] < startdate , "rcvstatus_fk__Final_charges"] = 0
-                grouped_df = grouped_df.drop(columns=["rcvstatus_fk__Disbursement_date"])
-                
-                all_rcv_inrange_list = grouped_df.values.tolist()
-                # iterate over list and find Balance due
-                for rcv in all_rcv_inrange_list:
-                    balance = float(rcv[2])-float(rcv[3])
-                    rcv.insert( 4 , balance)
-            else:
-                all_rcv_inrange_list=[]
-
-            # excess payments if disbursed
-            excess_receivables_qry = list(excess_model_qry.filter(Fin_code = fincode , Is_disbursed = True).values_list('Acc_Type','Entity','Final_charges','Final_charges','Paid_date'))
-            excess_receivables_list=[list(ele) for ele in excess_receivables_qry]
-
-            for excess in excess_receivables_list:
-                excess.insert(4,0) # this is outstanding 
-            
-            all_rcv_inrange_list+=excess_receivables_list
-            # writing into excel Payable
             i=0
             payable_out=0
             for x in range(start_payable,len(all_paid_inrange_list1)+start_payable):
@@ -334,18 +171,17 @@ def downloadReconReport(request):
             receivable_out=0
             for x in range(start_receivable,len(all_rcv_inrange_list)+start_receivable):
                 j=0
-                for y in range(9,15):
+                for y in range(9,17):
                     ws.cell(row=x,column=y).value=all_rcv_inrange_list[i][j]
                     j+=1     
-                receivable_out+=all_rcv_inrange_list[i][-2]
+                receivable_out+=all_rcv_inrange_list[i][-1]
                 i+=1 
             start_receivable+=i
             
-
             present_row='6'
             if start_payable == 6:
                 ws['B7'].value='TOTAL'
-                ws['C7'].value=0
+                ws['D7'].value=0
                 ws['G7'].value=0
                 ws['H7'].value=0
             else:
@@ -353,30 +189,30 @@ def downloadReconReport(request):
                 sum_hvalue = sum(ws[f"H{row}"].value or 0 for row in range(6, start_payable))
                 
                 ws['B'+present_row].value='TOTAL'
-                ws['C'+present_row].value="=SUM(C6:C"+str(start_payable-1)+")"
+                ws['D'+present_row].value="=SUM(D6:D"+str(start_payable-1)+")"
                 ws['G'+present_row].value="=SUM(G6:G"+str(start_payable-1)+")"
                 ws['H'+present_row].value= sum_hvalue
                 
             if start_receivable == 6:
                 receivable_row='6'
                 ws['J7'].value='TOTAL'
-                ws['K7'].value=0
-                ws['L7'].value=0
                 ws['M7'].value=0
+                ws['N7'].value=0
+                ws['P7'].value=0
 
             else:
                 receivable_row=str(start_receivable)
 
-                sum_mvalue = sum(ws[f"M{row}"].value or 0 for row in range(6, start_receivable))
+                sum_mvalue = sum(ws[f"P{row}"].value or 0 for row in range(6, start_receivable))
 
                 ws['J'+receivable_row].value='TOTAL'
-                ws['K'+receivable_row].value="=SUM(K6:K"+str(start_receivable-1)+")"
-                ws['L'+receivable_row].value="=SUM(L6:L"+str(start_receivable-1)+")"
-                ws['M'+receivable_row].value = sum_mvalue
+                ws['M'+receivable_row].value="=SUM(M6:M"+str(start_receivable-1)+")"
+                ws['N'+receivable_row].value="=SUM(N6:N"+str(start_receivable-1)+")"
+                ws['P'+receivable_row].value = sum_mvalue
             
             # # Fetch cell values
             H_present = ws['H' + str(present_row)].value or 0  # Default to 0 if None
-            M_receivable = ws['M' + str(receivable_row)].value or 0
+            M_receivable = ws['P' + str(receivable_row)].value or 0
             
             # # Compute net balance
             net_balance = H_present - M_receivable + closing_balance
@@ -395,6 +231,7 @@ def downloadReconReport(request):
             # summary sheet
             summary_sheet_data.append([fincode , user[0] , net_balance])
         except Exception as e:
+            print(e)
             continue
 
     del wb['Sheet1']   #deleting temp sheet
