@@ -121,12 +121,9 @@ def downloadReconReport(request):
     for user in all_users:
         try:
             fincode=user[1].replace(" ", "")
-            fincode = 'S0183'
             closing_balance_list = list(closing_balances_qry.filter(Fin_code = fincode).values_list('Closing_amount',flat=True))
             closing_balance = closing_balance_list[0] if len(closing_balance_list) else 0
-            
             source=wb.active
-            
             target=wb.copy_worksheet(source)
             entity_name = [character for character in user[0] if character.isalnum()]
             entity_name = "".join(entity_name).upper()
@@ -145,8 +142,6 @@ def downloadReconReport(request):
 
 
             df_all_paid_inrange_list1 = pd.DataFrame(all_paid_inrange_list1)
-            
-            
             
             
             df_all_paid_inrange_list1.drop_duplicates(inplace=True)
@@ -231,7 +226,6 @@ def downloadReconReport(request):
             # summary sheet
             summary_sheet_data.append([fincode , user[0] , net_balance])
         except Exception as e:
-            print(e)
             continue
 
     del wb['Sheet1']   #deleting temp sheet
@@ -244,9 +238,6 @@ def downloadReconReport(request):
     wb.close()
     return response  
     
-   
-
-
 
 def downloadSummaryReconReport(request):
     try:

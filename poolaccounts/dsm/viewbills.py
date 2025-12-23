@@ -26,60 +26,120 @@ def viewBills(request):
             if acc_type == 'DSM':
                   # get payables separate and receivables separate
                   if request_data['formdata']['usr'] and len(request_data['formdata']['usr'])>0:
-                        all_payrcv=list(DSMBaseModel.objects.filter(common_qry).order_by('Fin_year','Week_no').values('Fin_year','Week_no','Entity','Week_startdate','Week_enddate','Final_charges','PayableorReceivable','Fin_code'))
+                        all_payrcv=list(DSMBaseModel.objects.filter(common_qry).order_by('Fin_year','Week_no').values('Fin_year','Week_no','Entity','Week_startdate','Week_enddate','Final_charges','PayableorReceivable','Fin_code' ,'id'))
                   else:
-                        all_payrcv=list(DSMBaseModel.objects.filter(admin_qry).order_by('Fin_year','Week_no').values('Fin_year','Week_no','Entity','Week_startdate','Week_enddate','Final_charges','PayableorReceivable','Fin_code'))
+                        all_payrcv=list(DSMBaseModel.objects.filter(admin_qry).order_by('Fin_year','Week_no').values('Fin_year','Week_no','Entity','Week_startdate','Week_enddate','Final_charges','PayableorReceivable','Fin_code','id'))
 
             elif acc_type == 'SRAS':
                   # get payables separate and receivables separate
                   if request_data['formdata']['usr'] and len(request_data['formdata']['usr'])>0:
-                        all_payrcv=list(SRASBaseModel.objects.filter(common_qry).order_by('Fin_year','Week_no').values('Fin_year','Week_no','Entity','Week_startdate','Week_enddate','Final_charges','PayableorReceivable','Fin_code'))
+                        all_payrcv=list(SRASBaseModel.objects.filter(common_qry).order_by('Fin_year','Week_no').values('Fin_year','Week_no','Entity','Week_startdate','Week_enddate','Final_charges','PayableorReceivable','Fin_code','id'))
                   else:
-                        all_payrcv=list(SRASBaseModel.objects.filter(admin_qry).order_by('Fin_year','Week_no').values('Fin_year','Week_no','Entity','Week_startdate','Week_enddate','Final_charges','PayableorReceivable','Fin_code'))
+                        all_payrcv=list(SRASBaseModel.objects.filter(admin_qry).order_by('Fin_year','Week_no').values('Fin_year','Week_no','Entity','Week_startdate','Week_enddate','Final_charges','PayableorReceivable','Fin_code','id'))
 
             elif acc_type == 'TRAS':
                   # get payables separate and receivables separate
                   if request_data['formdata']['usr'] and len(request_data['formdata']['usr'])>0:
-                        all_payrcv=list(TRASBaseModel.objects.filter(common_qry).order_by('Fin_year','Week_no').values('Fin_year','Week_no','Entity','Week_startdate','Week_enddate','Final_charges','PayableorReceivable','Fin_code'))
+                        all_payrcv=list(TRASBaseModel.objects.filter(common_qry).order_by('Fin_year','Week_no').values('Fin_year','Week_no','Entity','Week_startdate','Week_enddate','Final_charges','PayableorReceivable','Fin_code','id'))
                   else:
-                        all_payrcv=list(TRASBaseModel.objects.filter(admin_qry).order_by('Fin_year','Week_no').values('Fin_year','Week_no','Entity','Week_startdate','Week_enddate','Final_charges','PayableorReceivable','Fin_code'))
+                        all_payrcv=list(TRASBaseModel.objects.filter(admin_qry).order_by('Fin_year','Week_no').values('Fin_year','Week_no','Entity','Week_startdate','Week_enddate','Final_charges','PayableorReceivable','Fin_code','id'))
 
             elif acc_type == 'MBAS':
                   # get payables separate and receivables separate
                   if request_data['formdata']['usr'] and len(request_data['formdata']['usr'])>0:
-                        all_payrcv=list(MBASBaseModel.objects.filter(common_qry).order_by('Fin_year','Week_no').values('Fin_year','Week_no','Entity','Week_startdate','Week_enddate','Final_charges','PayableorReceivable','Fin_code'))
+                        all_payrcv=list(MBASBaseModel.objects.filter(common_qry).order_by('Fin_year','Week_no').values('Fin_year','Week_no','Entity','Week_startdate','Week_enddate','Final_charges','PayableorReceivable','Fin_code','id'))
                   else:
-                        all_payrcv=list(MBASBaseModel.objects.filter(admin_qry).order_by('Fin_year','Week_no').values('Fin_year','Week_no','Entity','Week_startdate','Week_enddate','Final_charges','PayableorReceivable','Fin_code'))
+                        all_payrcv=list(MBASBaseModel.objects.filter(admin_qry).order_by('Fin_year','Week_no').values('Fin_year','Week_no','Entity','Week_startdate','Week_enddate','Final_charges','PayableorReceivable','Fin_code','id'))
 
             elif acc_type == 'REAC':
                   # get payables separate and receivables separate
                   if request_data['formdata']['usr'] and len(request_data['formdata']['usr'])>0:
-                        all_payrcv=list(REACBaseModel.objects.filter(common_qry).order_by('Fin_year','Week_no').values('Fin_year','Week_no','Entity','Week_startdate','Week_enddate','Final_charges','PayableorReceivable','Fin_code'))
+                        all_payrcv=list(REACBaseModel.objects.filter(common_qry).order_by('Fin_year','Week_no').values('Fin_year','Week_no','Entity','Week_startdate','Week_enddate','Final_charges','PayableorReceivable','Fin_code','id'))
                   else:
-                        all_payrcv=list(REACBaseModel.objects.filter(admin_qry).order_by('Fin_year','Week_no').values('Fin_year','Week_no','Entity','Week_startdate','Week_enddate','Final_charges','PayableorReceivable','Fin_code'))
+                        all_payrcv=list(REACBaseModel.objects.filter(admin_qry).order_by('Fin_year','Week_no').values('Fin_year','Week_no','Entity','Week_startdate','Week_enddate','Final_charges','PayableorReceivable','Fin_code','id'))
 
             elif acc_type == 'NET_AS':
                   # get payables separate and receivables separate
                   if request_data['formdata']['usr'] and len(request_data['formdata']['usr'])>0:
-                        all_payrcv=list(NetASBaseModel.objects.filter(common_qry).order_by('Fin_year','Week_no').values('Fin_year','Week_no','Entity','Week_startdate','Week_enddate','Final_charges','PayableorReceivable','Fin_code'))
+                        all_payrcv=list(NetASBaseModel.objects.filter(common_qry).order_by('Fin_year','Week_no').values('Fin_year','Week_no','Entity','Week_startdate','Week_enddate','Final_charges','PayableorReceivable','Fin_code','id'))
                   else:
-                        all_payrcv=list(NetASBaseModel.objects.filter(admin_qry).order_by('Fin_year','Week_no').values('Fin_year','Week_no','Entity','Week_startdate','Week_enddate','Final_charges','PayableorReceivable','Fin_code'))
+                        all_payrcv=list(NetASBaseModel.objects.filter(admin_qry).order_by('Fin_year','Week_no').values('Fin_year','Week_no','Entity','Week_startdate','Week_enddate','Final_charges','PayableorReceivable','Fin_code','id'))
 
             elif acc_type == 'CONG':
                   # get payables separate and receivables separate
                   if request_data['formdata']['usr'] and len(request_data['formdata']['usr'])>0:
-                        all_payrcv=list(CONGBaseModel.objects.filter(common_qry).order_by('Fin_year','Week_no').values('Fin_year','Week_no','Entity','Week_startdate','Week_enddate','Final_charges','PayableorReceivable','Fin_code'))
+                        all_payrcv=list(CONGBaseModel.objects.filter(common_qry).order_by('Fin_year','Week_no').values('Fin_year','Week_no','Entity','Week_startdate','Week_enddate','Final_charges','PayableorReceivable','Fin_code','id'))
                   else:
-                       
-                        all_payrcv=list(CONGBaseModel.objects.filter(admin_qry).order_by('Fin_year','Week_no').values('Fin_year','Week_no','Entity','Week_startdate','Week_enddate','Final_charges','PayableorReceivable','Fin_code'))
+                        all_payrcv=list(CONGBaseModel.objects.filter(admin_qry).order_by('Fin_year','Week_no').values('Fin_year','Week_no','Entity','Week_startdate','Week_enddate','Final_charges','PayableorReceivable','Fin_code','id'))
+
+            elif acc_type == 'SCUC_CC':
+                  # get payables separate and receivables separate
+                  all_payrcv=pd.DataFrame(SCUCCCBaseModel.objects.filter(Fin_year__in = fin_years ).order_by('Fin_year','Letter_date').values('Fin_year','Letter_date','Entity','Final_charges','PayableorReceivable','Fin_code','id') , columns=['Fin_year','Letter_date','Entity','Week_startdate','Week_enddate','Final_charges','PayableorReceivable','Fin_code','id'])
+                  #  replace nan with ''
+                  all_payrcv.fillna('',inplace=True)
+                  # rename Letter_date to Week_no for consistency in front end
+                  all_payrcv.rename( columns={'Letter_date':'Week_no'} , inplace=True)
+                  # make it to list of dicts
+                  all_payrcv=all_payrcv.to_dict(orient='records')
             else:
                   pass
-                 
+
             return JsonResponse([all_payrcv] , safe=False)
            
-
       except Exception as e:
             return HttpResponse(extractdb_errormsg(e),status=400)
+
+def updateBills(request):
+      try:
+            request_data = json.loads(request.body)
+            row = request_data.get("rowdata")
+            
+            if not row:
+                  return HttpResponse("Missing rowdata", status=400)
+
+            acc_type = request_data['acc_type']    # if needed
+            fin_year = row.get("Fin_year")
+            week_no = row.get("Week_no")
+            entity = row.get("Entity")
+            fin_code = row.get("Fin_code")   # this uniquely identifies your record 
+            
+            if not fin_code:
+                  return HttpResponse("Fin_code missing in rowdata", status=400)
+
+            # Determine model dynamically (same style as viewBills)
+            model_map = {
+                  "DSM": DSMBaseModel,
+                  "SRAS": SRASBaseModel,
+                  "TRAS": TRASBaseModel,
+                  "MBAS": MBASBaseModel,
+                  "REAC": REACBaseModel,
+                  "NET_AS": NetASBaseModel,
+                  "CONG": CONGBaseModel,
+            }
+
+            if acc_type not in model_map:
+                  return HttpResponse("Invalid acc_type", status=400)
+
+            ModelClass = model_map[acc_type]
+
+            # Fetch specific bill
+            instance = ModelClass.objects.get(id = row['id'])
+
+            # Update allowed fields
+            instance.Fin_year = row.get("Fin_year", instance.Fin_year)
+            instance.Week_no = row.get("Week_no", instance.Week_no)
+            instance.Entity = row.get("Entity", instance.Entity)
+            instance.Week_startdate = row.get("Week_startdate", instance.Week_startdate)
+            instance.Week_enddate = row.get("Week_enddate", instance.Week_enddate)
+            instance.Final_charges = row.get("Final_charges", instance.Final_charges)
+            instance.PayableorReceivable = row.get("PayableorReceivable", instance.PayableorReceivable)
+
+            instance.save()
+
+            return JsonResponse({"msg": "Updated successfully", "Fin_code": fin_code})
+
+      except Exception as e:
+            return HttpResponse(extractdb_errormsg(e), status=400)
 
 def downloadBills(request):
       try:

@@ -113,7 +113,7 @@ def processAllPayables(model_obj_qry ,iom_date,payrcv,prevwkstatus ,pool_acc,fin
         all_week_payments_df=pd.DataFrame(Payments.objects.values('Paid_date','Paid_amount','Bank_type','paystatus_fk__Fin_year','paystatus_fk__Week_no','paystatus_fk__Entity'))
         all_week_payments_df.rename(columns={'paystatus_fk__Fin_year':'Fin_year','paystatus_fk__Week_no':'Week_no','paystatus_fk__Entity':'Entity'},inplace=True)
         merged_all_weeks = pd.merge(all_week_payables_df,all_week_payments_df,on=['Fin_year','Week_no','Entity'],how='left')
-        dis_status = pd.DataFrame(list(DisbursementStatus.objects.filter(final_disburse=True,legacy_status =False).order_by('-Disbursed_date').values('Disbursed_date')))
+        dis_status = pd.DataFrame(list(DisbursementStatus.objects.filter(final_disburse=True,legacy_status =False).order_by('-Disbursed_date', '-id').values('Disbursed_date')))
         start_date = dis_status.at[1,"Disbursed_date"]
         end_date = dis_status.at[0,"Disbursed_date"]
         merged_all_weeks_filtered = merged_all_weeks[(merged_all_weeks['Paid_date'] >= start_date) & (merged_all_weeks['Paid_date'] <= end_date)]
@@ -174,7 +174,7 @@ def processAllPayables(model_obj_qry ,iom_date,payrcv,prevwkstatus ,pool_acc,fin
         all_week_payments_df=pd.DataFrame(NetASPayments.objects.values('Paid_date','Paid_amount','Bank_type','paystatus_fk__Fin_year','paystatus_fk__Week_no','paystatus_fk__Entity') ,columns=['Paid_date','Paid_amount','Bank_type','paystatus_fk__Fin_year','paystatus_fk__Week_no','paystatus_fk__Entity'])
         all_week_payments_df.rename(columns={'paystatus_fk__Fin_year':'Fin_year','paystatus_fk__Week_no':'Week_no','paystatus_fk__Entity':'Entity'},inplace=True)
         merged_all_weeks = pd.merge(all_week_payables_df,all_week_payments_df,on=['Fin_year','Week_no','Entity'],how='left')
-        dis_status = pd.DataFrame(list(DisbursementStatus.objects.filter(final_disburse=True,legacy_status = False).order_by('-Disbursed_date').values('Disbursed_date')))
+        dis_status = pd.DataFrame(list(DisbursementStatus.objects.filter(final_disburse=True,legacy_status = False).order_by('-Disbursed_date', '-id').values('Disbursed_date')))
         start_date = dis_status.at[1,"Disbursed_date"]
         end_date = dis_status.at[0,"Disbursed_date"]
         merged_all_weeks_filtered = merged_all_weeks[(merged_all_weeks['Paid_date'] >= start_date) & (merged_all_weeks['Paid_date'] <= end_date)]
@@ -233,7 +233,7 @@ def processAllPayables(model_obj_qry ,iom_date,payrcv,prevwkstatus ,pool_acc,fin
         all_week_payments_df=pd.DataFrame(REACPayments.objects.values('Paid_date','Paid_amount','Bank_type','paystatus_fk__Fin_year','paystatus_fk__Week_no','paystatus_fk__Entity'))
         all_week_payments_df.rename(columns={'paystatus_fk__Fin_year':'Fin_year','paystatus_fk__Week_no':'Week_no','paystatus_fk__Entity':'Entity'},inplace=True)
         merged_all_weeks = pd.merge(all_week_payables_df,all_week_payments_df,on=['Fin_year','Week_no','Entity'],how='left')
-        dis_status = pd.DataFrame(list(DisbursementStatus.objects.filter(final_disburse=True,legacy_status = False).order_by('-Disbursed_date').values('Disbursed_date')))
+        dis_status = pd.DataFrame(list(DisbursementStatus.objects.filter(final_disburse=True,legacy_status = False).order_by('-Disbursed_date', '-id').values('Disbursed_date')))
         start_date = dis_status.at[1,"Disbursed_date"]
         end_date = dis_status.at[0,"Disbursed_date"]
         merged_all_weeks_filtered = merged_all_weeks[(merged_all_weeks['Paid_date'] >= start_date) & (merged_all_weeks['Paid_date'] <= end_date)]
@@ -343,7 +343,7 @@ def processAllPayables(model_obj_qry ,iom_date,payrcv,prevwkstatus ,pool_acc,fin
         all_week_payments_df=pd.DataFrame(LegacyPayments.objects.values('Paid_date','Paid_amount','Bank_type','paystatus_fk__Fin_year','paystatus_fk__Week_no','paystatus_fk__Entity'))
         all_week_payments_df.rename(columns={'paystatus_fk__Fin_year':'Fin_year','paystatus_fk__Week_no':'Week_no','paystatus_fk__Entity':'Entity'},inplace=True)
         merged_all_weeks = pd.merge(all_week_payables_df,all_week_payments_df,on=['Fin_year','Week_no','Entity'],how='left')
-        dis_status = pd.DataFrame(list(DisbursementStatus.objects.filter(final_disburse=True,legacy_status = True).order_by('-Disbursed_date').values('Disbursed_date')))
+        dis_status = pd.DataFrame(list(DisbursementStatus.objects.filter(final_disburse=True,legacy_status = True).order_by('-Disbursed_date', '-id').values('Disbursed_date')))
         
         if len(dis_status) >1 :
             start_date = dis_status.at[1,"Disbursed_date"]

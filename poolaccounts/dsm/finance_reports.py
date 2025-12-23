@@ -13,6 +13,7 @@ from .reac_models import REACBaseModel
 from .sras_models import SRASBaseModel
 from .tras_models import TRASBaseModel
 from .scuc_models import SCUCBaseModel
+from .cong_models import CONGBaseModel
 from .short_fall_models import *
 from .models import BankStatement,MappedBankEntries
 from django.db.models import Q
@@ -233,6 +234,36 @@ def getOustandingdf(acc_type):
             model_obj= ShortfallBaseModel
             col_name='shortfallpayments__Paid_date'
             col_name2 = 'shortfallpayments__Paid_amount'
+        elif acc_type == 'CONG':
+            model_obj= CONGBaseModel
+            col_name='congpayments__Paid_date'
+            col_name2 = 'congpayments__Paid_amount'
+        elif acc_type == 'Interest':
+            model_obj= InterestBaseModel
+            col_name='interestpayments__Paid_date'
+            col_name2 = 'interestpayments__Paid_amount'
+            
+            temp_df = pd.DataFrame( model_obj.objects.filter(Letter_date__lt = today_date).values('Entity','Final_charges','Fin_code',col_name,col_name2) , columns=['Entity','Final_charges','Fin_code',col_name,col_name2])
+            basemodel_grouped = temp_df.groupby(['Fin_code']).agg({  'Entity': 'first','Final_charges':'sum', col_name : 'first',col_name2: 'sum',}).reset_index()
+
+            basemodel_grouped['Outstanding'] = basemodel_grouped['Final_charges'] - basemodel_grouped[col_name2]
+            basemodel_grouped.columns = ['Fin_code', 'Entity', 'Final_charges','Paid_date', 'Paid_amount', 'Outstanding']
+            # Filter rows where 'payments__Paid_date' is None
+            temp_filtered_df = basemodel_grouped[(basemodel_grouped['Outstanding']>5)]
+            filtered_df=temp_filtered_df.copy()
+            # sort by Entity
+            filtered_df.sort_values(['Entity'],inplace=True)
+            # group by Entity and sum the Final_charges
+            grouped_df = filtered_df.groupby('Fin_code').agg({ 'Outstanding': 'sum', 'Entity': 'first' }).reset_index()  # or 'last', depending on which Entity you want to retain
+            #sort based on Entity 
+            grouped_df.sort_values('Entity',inplace=True)
+            # reorder the columns
+            new_column_order=['Entity','Fin_code','Outstanding']
+            grouped_df=grouped_df[new_column_order]
+
+            week_wise_df = pd.DataFrame([] , columns= ['Fin_code', 'Week_no', 'Fin_year', 'Entity', 'Final_charges',
+                        'Paid_date', 'Paid_amount', 'Outstanding'])
+            return week_wise_df , grouped_df
         else:
             # if nothing matches return with empty dataframes
             return pd.DataFrame([],columns=['Fin_year','Week_no','Entity','Outstanding','Fin_code',col_name,col_name2]),pd.DataFrame([],columns=['Fin_code','Outstanding','Entity'])
@@ -241,27 +272,25 @@ def getOustandingdf(acc_type):
         if acc_type == 'Shortfall' :
             basemodel_df=pd.DataFrame(model_obj.objects.filter(Due_date__lt= today_date).exclude( Q(Fin_code__isnull=True) | Q(Fin_code='')).values('Fin_year','Letter_date','Entity','Final_charges','Fin_code',col_name,col_name2),columns=['Fin_year','Letter_date','Entity','Final_charges','Fin_code',col_name,col_name2])
             basemodel_df['Week_no'] = basemodel_df['Letter_date']
-
         else :
             basemodel_df=pd.DataFrame(model_obj.objects.filter(Due_date__lt= today_date,PayableorReceivable='Payable',Effective_end_date__isnull=True).exclude( Q(Fin_code__isnull=True) | Q(Fin_code='')).values('Fin_year','Week_no','Entity','Final_charges','Fin_code',col_name,col_name2),columns=['Fin_year','Week_no','Entity','Final_charges','Fin_code',col_name,col_name2])
+           
         # rename the column
-
         basemodel_df[col_name2] = basemodel_df[col_name2].fillna(0)
-        basemodel_grouped = basemodel_df.groupby(['Fin_code','Week_no','Fin_year']).agg({  'Entity': 'first','Final_charges':'mean', col_name : 'first',col_name2: 'sum',}).reset_index()
+        if acc_type == 'NET_AS':
+            basemodel_grouped = basemodel_df.groupby(['Fin_code','Week_no','Fin_year']).agg({  'Entity': 'first','Final_charges':'sum', col_name : 'first',col_name2: 'sum',}).reset_index()
+        elif acc_type == 'Interest':
+            basemodel_grouped = basemodel_df.copy()
+        else :
+            basemodel_grouped = basemodel_df.groupby(['Fin_code','Week_no','Fin_year']).agg({  'Entity': 'first','Final_charges':'mean', col_name : 'first',col_name2: 'sum',}).reset_index()
 
         basemodel_grouped['Outstanding'] = basemodel_grouped['Final_charges'] - basemodel_grouped[col_name2]
         basemodel_grouped.columns = ['Fin_code', 'Week_no', 'Fin_year', 'Entity', 'Final_charges','Paid_date', 'Paid_amount', 'Outstanding']
         
-        #basemodel_df.rename(columns={'Final_charges':'Outstanding'},inplace=True)
-       
         # Filter rows where 'payments__Paid_date' is None
         temp_filtered_df = basemodel_grouped[(basemodel_grouped['Outstanding']>5) & (basemodel_grouped['Fin_year'] >= '2023-24')]
-        # now Paid_date column is no longer required
-        #temp_filtered_df=temp_filtered_df.drop(columns=[col_name])
-        # temp_filtered_df if outstanding is greater than 0
-        #temp_filtered_df=temp_filtered_df[temp_filtered_df['Outstanding']>0]
+      
         filtered_df=temp_filtered_df.copy()
-        
         # sort by Entity
         filtered_df.sort_values(['Entity','Fin_year','Week_no'],inplace=True)
         # group by Entity and sum the Final_charges
@@ -271,9 +300,11 @@ def getOustandingdf(acc_type):
         # reorder the columns
         new_column_order=['Entity','Fin_code','Outstanding']
         grouped_df=grouped_df[new_column_order]
+    
         return filtered_df,grouped_df
         
     except Exception as e:
+        print(e)
         extractdb_errormsg(e)
         return pd.DataFrame([str(e)],columns=['Fin_year','Week_no','Entity','Outstanding','Fin_code',col_name]),pd.DataFrame([str(e)],columns=['Fin_code','Outstanding','Entity'])
     

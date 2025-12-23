@@ -21,12 +21,14 @@ urlpatterns = [
       path('get_temporary_bills/', views.temporaryBills ),
       path('store_bills/', views.storeBills ),
       path('store_nldc_ir_bills/', views.storeNLDCIntimatedIRBill ),
+      path('add_bill/', views.addBillsManually ),
       
       #shortfall bill
       path('get_shortfall_states/', views.shortfallStates ),
       path('store_shortfall_bills/', views.storeShortfallBill ),
       
       path('view_bills/', views.viewBills ),
+      path('update_bills/', views.updateBills ),
       path('download_bills/', views.downloadBills ),
       path('download_payrcv/', views.downloadPayRcv ),
       # bank statement 
@@ -109,6 +111,11 @@ urlpatterns = [
       # SCUC CC
       path('get_scuc_cc_entities/',views.scucCCEntities),
       path('store_scuc_cc_bills/',views.storescucCCBills),
+      path('get_all_scuccc_dates/',views.getAllSCUCDatesPage),
+      path('get_scucc_bills/',views.getSCUCCCBills),
+      path('scuccc_disbursement/',views.scucccDisbursement),
+      path('scuccc_geniom/',views.downloadSCUCCCCIOM),
+
       # Reconciliation 
       path('notify_recon_bills/',views.notifyReconBills),
       path('download_recon_excel/', views.downloadReconReport),
@@ -122,6 +129,8 @@ urlpatterns = [
       path('get_uploaded_copies/', views.getUploadedCopies),
       path('approve_reject_signed_copies/', views.approveRejectSignedCopies),
       path('download_recon_uploaded_pdfs/', views.downloadUploadedPDFs),
+      path('generate_recon_bal_template/', views.generateTemplateReconBal),
+      path('store_recon_closing_balance/', views.storeReconClosingBalance),
       # 
       # path('create_users/', views.createUsers),
 ]

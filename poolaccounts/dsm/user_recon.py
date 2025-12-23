@@ -9,6 +9,7 @@ from fpdf import FPDF
 from .common import format_indian_currency_withoutsymbol , get_quarter_end_date
 from registration.fetch_data import getFCName
 import pandas as pd
+import csv
 
 def get_quarter_dates(fin_year_str, quarter):
     start_year = int(fin_year_str.split('-')[0])
@@ -57,7 +58,12 @@ def notifyReconBills(request):
 def getLastReconSubmits(request):
     try:
         in_data = json.loads(request.body)
-        last_recon_submits = list( ReconUploadStatus.objects.filter(Fin_code = in_data['fincode']).order_by('-Uploaded_time').values('Acc_type','Fin_year','Quarter','Uploaded_time' ,'Upload_status' ,'Admin_remarks' ) )
+        sub_lst = in_data['userdata']['sub_entities_lst']
+        if len(sub_lst):
+            fincodes = [code['fin_code'] for code in sub_lst]
+        else:
+            fincodes = [in_data['userdata']['fin_code']]
+        last_recon_submits = list( ReconUploadStatus.objects.filter(Fin_code__in = fincodes).order_by('-Uploaded_time').values('Acc_type','Fin_year','Quarter','Uploaded_time' ,'Upload_status' ,'Admin_remarks' ) )
 
         return JsonResponse(last_recon_submits , safe=False)
     
@@ -719,15 +725,13 @@ def reco_for_user2(fin_code,startdate,enddate,acc_type):
 
         return all_paid_inrange_list,all_rcv_inrange_list
     except Exception as e:
-        import pdb
-        pdb.set_trace()
         print(e)
         return [] , []
 
 def userRecon(request):
     try:
         in_data = json.loads(request.body)
-        fin_code = in_data['fincode']
+        fin_code = in_data['formdata']['fincode']
         fin_year = in_data['formdata']['fin_year']
         quarter = in_data['formdata']['quarter']
         acc_type = in_data['formdata']['acc_type']
@@ -736,7 +740,6 @@ def userRecon(request):
         
         start_date,end_date = get_quarter_dates(fin_year,quarter)
         all_payable_lst , all_receivable_lst = reco_for_user2(fin_code,start_date,end_date,acc_type)
-        
         
         cleaned_payable_lst = removeNanValues(all_payable_lst)
         cleaned_receivable_lst = removeNanValues(all_receivable_lst)
@@ -863,7 +866,7 @@ def print_table_with_wrapped_first_col(pdf, headers, data_rows, col_widths, max_
        
 def ReconPDF(start_date, end_date, in_data , payable_data , receivable_data,opening_balance,closing_balance):
     try:
-        fin_code = in_data['fincode']
+        fin_code = in_data['formdata']['fincode']
         fin_year = in_data['formdata']['fin_year']
         quarter = in_data['formdata']['quarter']
         acc_type = in_data['formdata']['acc_type']
@@ -936,12 +939,9 @@ def ReconPDF(start_date, end_date, in_data , payable_data , receivable_data,open
         # Move cursor down slightly below image
         pdf.set_y(img_y + signature_height + 1)
 
+        pdf.cell(0, 10, "S Suresh Raj", ln=1, align='R')
+        pdf.cell(0, 10, "Dy General Manager (MO),", ln=1, align='R')
 
-        pdf.cell(0, 10, "C Rethi Nair", ln=1, align='R')
-        pdf.cell(0, 10, "Deputy General Manager (MO),", ln=1, align='R')
-
-  
-        
         # bottom copy to
         pdf.set_font("Times", "BU", 9)
         pdf.cell(0, 10, "Copy Enclosed :", ln=1)
@@ -1066,7 +1066,8 @@ def ReconPDF(start_date, end_date, in_data , payable_data , receivable_data,open
 def generateReconPDF(request):
     try:
         in_data = json.loads(request.body)
-        fin_code = in_data['fincode']
+        
+        fin_code = in_data['formdata']['fincode']
         fin_year = in_data['formdata']['fin_year']
         quarter = in_data['formdata']['quarter']
         acc_type = in_data['formdata']['acc_type']
@@ -1083,12 +1084,11 @@ def generateReconPDF(request):
                     Fin_code = fin_code ,
                     Upload_status = 'A'
                 )
+        
         if recon_qry.count() > 0:
             pdf_path = list(recon_qry.values_list('File_path' , flat=True))
             return FileResponse(open(pdf_path[0],'rb'),content_type='application/pdf')
             
-
-
         all_payable_lst , all_receivable_lst = reco_for_user(fin_code,start_date,end_date,acc_type)
 
         o_b = ReconLastQuarterBalance.objects.filter(Fin_code = fin_code, Acc_type =acc_type ,as_on_date = start_date-timedelta(days=1)).values()
@@ -1096,7 +1096,7 @@ def generateReconPDF(request):
 
         # convert Payable List to dataframe and do some modifications
         payable_df = pd.DataFrame(all_payable_lst)
-
+        
         if not payable_df.empty:
             for i in range(0, payable_df.shape[0]):
                 try :
@@ -1115,8 +1115,6 @@ def generateReconPDF(request):
             
             if len(payable_df):
                 total1 = payable_df[5].sum()
-
-                
                 payable_df.at[len(payable_df), 0] = 'TOTAL (B)'
                 payable_df.at[len(payable_df) - 1, 1] = payable_df[1].sum()
                 payable_df.at[len(payable_df) - 1, 4] = payable_df[4].sum()
@@ -1124,7 +1122,6 @@ def generateReconPDF(request):
 
                 payable_df.fillna('', inplace=True)
 
-                
                 payable_df[2] = pd.to_datetime(payable_df[2]).dt.strftime('%d-%m-%Y')
                 payable_df[3] = pd.to_datetime(payable_df[3]).dt.strftime('%d-%m-%Y')
                 payable_df[1] = payable_df[1].apply(lambda x: format_indian_currency_withoutsymbol(x))  # final charges
@@ -1140,7 +1137,7 @@ def generateReconPDF(request):
 
         # convert Receivable List to dataframe
         receivable_df = pd.DataFrame(all_receivable_lst)
-
+        
         for i in range(0,receivable_df.shape[0]):
             try :
                 receivable_df.at[i,0] = "Wk " + str(receivable_df.at[i,0])+"( "+receivable_df.at[i,1].strftime('%d-%m-%Y')+" to "+receivable_df.at[i,2].strftime('%d-%m-%Y')+" )"
@@ -1172,7 +1169,7 @@ def generateReconPDF(request):
         opening_balance = df_o_b['Amount'].apply(lambda x:format_indian_currency_withoutsymbol(x))
 
         closing_balance = (df_o_b['Amount'] + (total1 -total2)).apply(lambda x:format_indian_currency_withoutsymbol(x))
-
+        
         pdf_path = ReconPDF(start_date,end_date,in_data , payable_df.values.tolist() , receivable_df.values.tolist(),opening_balance[0],closing_balance[0])
         
         return FileResponse(open(pdf_path,'rb'),content_type='application/pdf')
@@ -1184,7 +1181,9 @@ def generateReconPDF(request):
 def uploadReconPDF(request):
     try:
         formdata = json.loads(request.POST['formdata'])
+        
         fincode = request.POST['fincode']
+      
         # check if already entry made 
         if ReconUploadStatus.objects.filter(
             Acc_type = formdata['acc_type'] ,
@@ -1219,27 +1218,23 @@ def uploadReconPDF(request):
 def getUploadedCopies(request):
     try:
         in_data = json.loads(request.body)
-        
-        signed_df = pd.DataFrame(ReconUploadStatus.objects.filter(Acc_type = in_data['acc_type'] ,Fin_year = in_data['fin_year'] , Quarter = in_data['quarter'] ,Fin_code__in = in_data['usr'] , Upload_status = in_data['status'] ).all().values() , columns=['Acc_type', 'Fin_year' , 'Quarter' ,'Fin_code','Upload_status' ,'Uploaded_time','File_path' ,'Admin_remarks' 'Admin_uploaded_time' ] )
-        
-        # if signed_df.empty:
-        #     return JsonResponse({'status': True ,'data' : [] } , safe=False) 
-        
         fc_names_df=pd.DataFrame(Registration.objects.filter(Q(end_date__isnull=True) , Q(fin_code__in = in_data['usr'])).values('fin_code','fees_charges_name'))
-        if in_data['status'] == 'A':
+        if in_data['status'] == 'ALL':
+            signed_df = pd.DataFrame(ReconUploadStatus.objects.filter(Acc_type = in_data['acc_type'] ,Fin_year = in_data['fin_year'] , Quarter = in_data['quarter'] ,Fin_code__in = in_data['usr']).all().values() , columns=['Acc_type', 'Fin_year' , 'Quarter' ,'Fin_code','Upload_status' ,'Uploaded_time','File_path' ,'Admin_remarks' 'Admin_uploaded_time' ] )
             # merge df and
             merge_df = pd.merge(fc_names_df ,signed_df , left_on='fin_code' , right_on = 'Fin_code' , how = 'left')
         else :
+            signed_df = pd.DataFrame(ReconUploadStatus.objects.filter(Acc_type = in_data['acc_type'] ,Fin_year = in_data['fin_year'] , Quarter = in_data['quarter'] ,Fin_code__in = in_data['usr'] , Upload_status = in_data['status'] ).all().values() , columns=['Acc_type', 'Fin_year' , 'Quarter' ,'Fin_code','Upload_status' ,'Uploaded_time','File_path' ,'Admin_remarks' 'Admin_uploaded_time' ] )
             # merge df and
             merge_df = pd.merge(signed_df , fc_names_df , left_on='Fin_code' , right_on = 'fin_code' , how = 'left')
-       
+            
         merge_df['Is_upload'] = merge_df['Uploaded_time'].notna()
         merge_df.fillna('',inplace=True)
         merge_df.sort_values(by=['fees_charges_name'] , inplace=True)
         return JsonResponse({'status': True ,'data' : merge_df.to_dict(orient='records') } , safe=False)
 
     except Exception as e:
-      
+       
         return JsonResponse({'status' : False , 'error' : str(e)} , safe=False)
     
 def approveRejectSignedCopies(request):
@@ -1276,5 +1271,52 @@ def downloadUploadedPDFs(request):
     try:
         file_path = request.body.decode('utf-8') 
         return FileResponse(open(file_path,'rb'),content_type='application/pdf')
+    except Exception as e:
+        return HttpResponse(str(e) , status = 404)
+
+def generateTemplateReconBal(_):
+    try:
+        users_df = pd.DataFrame(Registration.objects.filter(Q(end_date__isnull = True) | Q(end_date__gte = datetime.today())).order_by('fees_charges_name').values('fees_charges_name','fin_code'))
+        # add extra columns as closing amount
+        users_df['closing_balance'] = None
+        full_path = 'templates//recon_closing_temp.csv'
+        users_df.to_csv(full_path , index=False)
+        return FileResponse(open( full_path,'rb') ,content_type='text/csv') 
+    except Exception as e:
+        return HttpResponse(str(e) , status = 404)   
+    
+
+def storeReconClosingBalance(request):
+    try:
+        acc_type = request.POST.get('acc_type')
+        month = request.POST.get('month')
+        file = request.FILES['file']
+        # Read CSV content
+        file.seek(0)
+        decoded_file = file.read().decode('utf-8').splitlines()
+        reader = csv.reader(decoded_file)
+        data = [row for row in reader]
+        bal_df = pd.DataFrame(data[1:] , columns = ['fees_charges_name','fin_code','closing_balance'])
+        # drop column fees_charges_name
+        bal_df.drop(columns=['fees_charges_name'] , inplace=True)
+        # Convert to numeric, invalid parsing will become NaN
+        bal_df['closing_balance'] = pd.to_numeric(bal_df['closing_balance'], errors='coerce')
+        # Drop rows where closing_balance is NaN
+        bal_df = bal_df.dropna(subset=['closing_balance'])
+        # Optional: convert to integer
+        bal_df['closing_balance'] = bal_df['closing_balance'].astype(int)
+
+        records = [
+                ClosingBalances(
+                    Month_year=month,
+                    Fin_code=dat['fin_code'],
+                    Acc_type=acc_type,
+                    Closing_amount=dat['closing_balance']
+                )
+                for _, dat in bal_df.iterrows()
+            ]
+        # Bulk insert all at once
+        ClosingBalances.objects.bulk_create(records)
+        return JsonResponse({'status': True , 'message' : 'Stored Successfully'} ,safe=False)   
     except Exception as e:
         return HttpResponse(str(e) , status = 404)

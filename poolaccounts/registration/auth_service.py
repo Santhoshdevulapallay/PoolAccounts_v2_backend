@@ -24,7 +24,15 @@ def checkEntity(username):
         return fin_code , is_utility
     except Exception as e:
         return None ,False
-    
+
+def checksubownersList(ownername):
+    try:
+        # get sub entity list
+        sub_entities_lst = list(Registration.objects.filter(owner = ownername).values('fin_code','fees_charges_name'))
+        return sub_entities_lst
+    except Exception as e:
+        return []
+      
 def login(request):
     try:
         userdata=json.loads(request.body)
@@ -32,10 +40,14 @@ def login(request):
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data['user']
         # actually here first_name is for Department (MO,FIN)
-        token, created = Token.objects.get_or_create(user=user)
+        token, _ = Token.objects.get_or_create(user=user)
         if user: 
             fin_code , is_utility = checkEntity(userdata['formdata']['username'])
-           
+            sub_entities_lst = []
+            if not is_utility:
+                # get sub entity list
+                sub_entities_lst = checksubownersList(userdata['formdata']['username'])
+             
             return JsonResponse({
                 'status':True,
                 'token': token.key,
@@ -44,16 +56,18 @@ def login(request):
                 'userName':user.username,
                 'department':user.first_name ,
                 'fin_code' : fin_code ,
-                'is_utility': is_utility
+                'is_utility': is_utility,
+                'sub_entities_lst' : sub_entities_lst
                 })
         else:
             return JsonResponse({'status':False})
         
     except ValidationError as err:
+        print(err)
         # Extract non_field_errors
         non_field_errors = err.detail.get('non_field_errors', [])
         # You can customize the response format as needed
-        return JsonResponse({'status':False,'non_field_errors': non_field_errors},safe=False)
+        return JsonResponse({'status':False,'non_field_errors': str(err)},safe=False)
 
 
 def logout(request):

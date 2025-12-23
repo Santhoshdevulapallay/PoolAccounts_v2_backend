@@ -1,6 +1,27 @@
 from django.db import models
 from django.utils import timezone
 
+class TempRevisionModel(models.Model):
+      Fin_year=models.CharField(max_length=15,blank=True , default=None)
+      Week_no=models.IntegerField(blank=True , default=None)
+      Fin_code=models.CharField(max_length=100 ,default=None)    
+      Week_startdate=models.DateField(default=None)
+      Week_enddate=models.DateField(default=None)
+      Letter_date=models.DateField(default=None)
+      Acc_type=models.CharField(max_length=50,default=None)
+      Entity=models.TextField(default=None)
+      Revised_charges=models.FloatField(default=None,blank=True)
+      PayableorReceivable=models.CharField(max_length=50,default=None,blank=True)
+      Remarks=models.TextField(default=None,blank=True,null=True)
+      Parent_revision_fk=models.IntegerField(default=None,blank=True)
+      Revision_no = models.SmallIntegerField(default=None , blank=True , null=True)
+      def __str__(self):
+            return self.Letter_date
+      
+      class Meta:
+            db_table = 'temp_revision_model'
+            unique_together=['Acc_type','Letter_date','Entity','Parent_revision_fk']
+
 # Net AS related models
 class RevisionBaseModel(models.Model):
       Letter_date=models.DateField(default=None)

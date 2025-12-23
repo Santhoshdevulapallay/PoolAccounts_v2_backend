@@ -259,7 +259,7 @@ def appendFinalPrevweek(current_wk_list,prev_wk_list,pool_acc):
     
 def getLastDisbursementSurplus():
     # always get the latest week based on Disbursed_date desc . If all are disbursed then only full disbursement happened
-    dis_status = list(DisbursementStatus.objects.filter(final_disburse=True).order_by('-Disbursed_date')[:1].values('Disbursed_date','Surplus_amt','legacy_surplus_amt','dsm','mbas','sras','tras','dsm_prevwk','revision_disbursed','remarks'))
+    dis_status = list(DisbursementStatus.objects.filter(final_disburse=True).order_by('-Disbursed_date', '-id')[:1].values('Disbursed_date','Surplus_amt','legacy_surplus_amt','dsm','mbas','sras','tras','dsm_prevwk','revision_disbursed','remarks'))
     
     # If no disbursement found then this is the first disbursement
     if dis_status:
@@ -369,9 +369,9 @@ def getLastDisbursedWk(request):
         
         partial_dis_status = list(DisbursementStatus.objects.filter(
             ( Q(dsm=False) | Q(net_as=False) |Q(reac=False) | Q(ir=False) | Q(dsm_prevwk=False)| Q(net_as_prevwk=False)| Q(reac_prevwk=False) | Q(final_disburse=False) )
-            ).order_by('-Disbursed_date')[:1].values('Disbursed_date','Surplus_amt','dsm','net_as','reac','ir','cong', 'dsm_collected','id','dsm_prevwk','net_as_prevwk','sras_prevwk','tras_prevwk','reac_prevwk','mbas_prevwk','ir_prevwk','cong_prevwk'))
+            ).order_by('-Disbursed_date', '-id')[:1].values('Disbursed_date','Surplus_amt','dsm','net_as','reac','ir','cong', 'dsm_collected','id','dsm_prevwk','net_as_prevwk','sras_prevwk','tras_prevwk','reac_prevwk','mbas_prevwk','ir_prevwk','cong_prevwk'))
         
-
+        
         # dsm_status and sras_status are accessing through global variable
         if partial_dis_status:
             # is to calculate already disbursed amount
@@ -417,7 +417,7 @@ def getLastDisbursedWk(request):
             cong_prevwk_status=False
         
         all_poolaccounts_summary=getPoolAccountSummary(surplus_amt,cal_already_disbursed_amt,legacy_surplus_amt)
-
+        
         # These are for Current Week
         current_wk_models = [
             (DSMBaseModel, 'dsm_status', 'final_dsm_receivables'),
@@ -482,7 +482,7 @@ def getLastDisbursedWk(request):
 
         priority_list_sorted = sorted(priority_list, key=lambda x: x['priority'])
         # get all disbursed weeks
-        disbursed_weeks_lst=list(DisbursementStatus.objects.filter(final_disburse=True).order_by('-Disbursed_date').values_list('Disbursed_date',flat=True))
+        disbursed_weeks_lst=list(DisbursementStatus.objects.filter(final_disburse=True).order_by('-Disbursed_date', '-id').values_list('Disbursed_date',flat=True))
 
         # unique Fin_year and Week_no
         dsm_finwk_df=pd.DataFrame(globals()['dsm_prevwk_rcvd_list'])
@@ -541,7 +541,7 @@ def transfertoLegacy(request):
         to_be_transfer = json.loads(request.body)['transfer_to_legacy']
         # get latest record from Disbursement Status
 
-        dis_status = list(DisbursementStatus.objects.filter(final_disburse=True).order_by('-Disbursed_date')[:1].all().values())
+        dis_status = list(DisbursementStatus.objects.filter(final_disburse=True).order_by('-Disbursed_date', '-id')[:1].all().values())
         intimate_to_NLDC = list(IntimateNLDC.objects.filter(is_used_indisbursement=False).order_by('-intimate_date').all().values())
 
         if len(intimate_to_NLDC):    
@@ -575,7 +575,7 @@ def transfertoMain(request):
         summary_data = json.loads(request.body)['disburse_summary']
         to_be_transfer = json.loads(request.body)['transfer_to_legacy']
         # get latest record from Disbursement Status
-        dis_status = list(DisbursementStatus.objects.filter(final_disburse=True).order_by('-Disbursed_date')[:1].all().values())
+        dis_status = list(DisbursementStatus.objects.filter(final_disburse=True).order_by('-Disbursed_date', '-id')[:1].all().values())
         intimate_to_NLDC = list(IntimateNLDC.objects.filter(is_used_indisbursement=False).order_by('-intimate_date').all().values())
         if len(intimate_to_NLDC):
             return JsonResponse({'status' : False , 'message' :'Please check intimated to NLDC, if anything pending IR should be transfered!! '} , safe=False)
@@ -1061,7 +1061,6 @@ def finalDisbursement(request):
         nldc_split_qry=list(NLDCPoolAmountSplit.objects.filter(disburse_date=datetime.today() ).values('amount_for_dsm','amount_for_netas','amount_for_reac','is_user_checked'))
         legacy_st = nldc_split_qry[0]['is_user_checked']
         
-       
         if  last_dis_date:
             last_dis_date_object = datetime.strptime(last_dis_date, "%d-%m-%Y").date()
             # get the current disbursement date based on greater than last_disbursed_date
@@ -1069,7 +1068,12 @@ def finalDisbursement(request):
         else:
             dis_status_qry=DisbursementStatus.objects.all()
 
-
+        true_fields = [
+            "final_disburse",  "sras", "tras", "mbas", "reac", "ir", "net_as", "cong",
+            "dsm_prevwk", "sras_prevwk", "tras_prevwk", "mbas_prevwk",
+            "reac_prevwk", "net_as_prevwk", "ir_prevwk", "cong_prevwk"
+        ]
+        
         if len(dis_status_qry):
             dis_status=list(dis_status_qry.order_by('Disbursed_date').values('Disbursed_date','dsm','net_as','reac','ir','dsm_prevwk','net_as_prevwk','reac_prevwk','ir_prevwk','Surplus_amt'))
             
@@ -1146,7 +1150,14 @@ def finalDisbursement(request):
                         getPaymentsConsideredForDisbursement(p_type,legacy_st) #Payables status changer
                         
                     # changing final_disburse status to True , parallely update Surplus amount also
-                    dis_status_qry.update(final_disburse=True,Surplus_amt=net_amount,legacy_surplus_amt=prev_wk_amount_legacy)
+                    update_data = {field: True for field in true_fields}
+                    update_data.update({
+                        "Surplus_amt": net_amount,
+                        "legacy_surplus_amt": prev_wk_amount_legacy,
+                        "legacy_status" : False
+                    })
+                    dis_status_qry.update(**update_data)
+                    # dis_status_qry.update(final_disburse=True,Surplus_amt=net_amount,legacy_surplus_amt=prev_wk_amount_legacy)
                         # update the Intimate NLDC table
                     intimate_nldc_qry.update(is_used_indisbursement=True)
                     TempDisbursedWeeks.objects.all().delete()
@@ -1177,7 +1188,7 @@ def finalDisbursement(request):
                     merged_accs=getMergedAccts()
                     result_accs=[acc for acc in all_pool_accs if acc not in merged_accs ]
                     pool_types = sorted(result_accs)
-
+                    
                     for p_type in pool_types:
                         filtered_df=dis_entities_df[dis_entities_df['pool_acctype']==p_type]
                         if p_type=='DSM':
@@ -1199,8 +1210,18 @@ def finalDisbursement(request):
                         else:continue
 
                         getPaymentsConsideredForDisbursement(p_type,legacy_st) #Payables status changer
-                        # changing final_disburse status to True , parallely update Surplus amount also
-                    dis_status_qry.update(final_disburse=True,Surplus_amt=prev_wk_amount,legacy_surplus_amt=net_amount,legacy_status = True , Disbursed_date = datetime.now().date())
+                       
+                    # changing final_disburse status to True , parallely update Surplus amount also
+                    update_data = {field: True for field in true_fields}
+                    update_data.update({
+                        "Surplus_amt": prev_wk_amount,
+                        "legacy_surplus_amt": net_amount,
+                        "legacy_status" : True,
+                        "Disbursed_date" : datetime.now().date()
+                    })
+
+                    dis_status_qry.update(**update_data)
+                    # dis_status_qry.update(final_disburse=True,Surplus_amt=prev_wk_amount,legacy_surplus_amt=net_amount,legacy_status = True , Disbursed_date = datetime.now().date())
                     TempDisbursedWeeks.objects.all().delete()
                     return JsonResponse({'status':True , 'message':'Legacy Disbursement done Successfully'},safe=False)     
             else: 

@@ -12,8 +12,8 @@ from .short_fall_models import *
 
 def shortfallStates(request):
     try:
-        states_df = pd.DataFrame( Registration.objects.filter(Q(entity_type = 'buyer' ), ( Q(end_date__isnull = True) | Q(end_date__gte = datetime.now())) ).values('fees_charges_name' ,'fin_code') , columns=['fees_charges_name','fin_code'])
-
+        states_df = pd.DataFrame( Registration.objects.filter(Q(entity_type = 'BUYER/STATE' ), ( Q(end_date__isnull = True) | Q(end_date__gte = datetime.now())) ).values('fees_charges_name' ,'fin_code') , columns=['fees_charges_name','fin_code'])
+        
         states_df['final_charges'] = 0    
        
         return JsonResponse(states_df.to_dict(orient='records') , safe=False)

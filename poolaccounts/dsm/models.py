@@ -165,7 +165,7 @@ class TemporaryMatched(models.Model):
       
       class Meta:
             db_table = 'temporary_matched'
-            unique_together=['Acc_type','Fin_year','Week_no','Entity']
+            # unique_together=['Acc_type','Fin_year','Week_no','Fin_code','Is_infirm']
 
 class TemporaryInterRegional(models.Model):
       Fin_year=models.CharField(max_length=10,default=None)
