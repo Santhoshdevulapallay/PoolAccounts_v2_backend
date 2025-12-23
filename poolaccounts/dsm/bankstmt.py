@@ -15,8 +15,8 @@ import pdb , numpy as np
 from datetime import datetime, timedelta
 from io import StringIO
 from django.db.models import F ,Count ,Sum , Q
-import ast
-import chardet
+from .scuc_cc import getAllSCUCDates
+
 def transformColumn(transactions_df ,col_name):
       # Replace empty strings ('') with NaN in the specified column
       transactions_df[col_name].replace('', np.nan, inplace=True)
@@ -399,7 +399,8 @@ def bankStmtStatus(request):
             
             all_transactions=total_transactions+mapped_transactions+notmapped_transactions+sweep_transactions
 
-            return JsonResponse([all_transactions,getRevisionInterestUniqueDates(),getShortfallUniqueDates()],safe=False)
+
+            return JsonResponse([all_transactions,getRevisionInterestUniqueDates(),getShortfallUniqueDates() , getAllSCUCDates()],safe=False)
 
       except Exception as e:
             return HttpResponse(extractdb_errormsg(e),status=400)
@@ -532,9 +533,9 @@ def getBillAmount(request):
       try:
             in_data=json.loads(request.body)
             fin_code= getFincode(in_data['Entity'])
+            
             common_qry=Q(Fin_year=in_data['Fin_year'],Week_no=in_data['Week_no'],Fin_code=fin_code,PayableorReceivable='Payable',Revision_no=0)
             common_qry1=Q(Fin_year=in_data['Fin_year'],Week_no=in_data['Week_no'],Fin_code=fin_code,PayableorReceivable='Payable')
-            
             if  fin_code:
                   if in_data['AccType'] == 'DSM':
                         try:
@@ -592,11 +593,13 @@ def getBillAmount(request):
 
                   elif in_data['AccType'] == 'Interest':
                         try:
+                             
                               final_charges_lst=list(InterestBaseModel.objects.filter(Fin_code=fin_code,Letter_date=in_data['Week_no']).order_by('-Letter_date').values('Final_charges','interestpayments__Paid_amount'))
                               #final_charges=final_charges_lst[0]['Final_charges']
                         except:
                               return JsonResponse(0,safe=False)
                         # rename irpayments__Paid_amount to Paid_amount
+                        
                         for item in final_charges_lst:
                               item['Paid_amount'] = item.pop('interestpayments__Paid_amount')
                         final_charges=calOutstandingAmount(final_charges_lst)
@@ -663,6 +666,16 @@ def getBillAmount(request):
                         
                         for item in final_charges_lst:
                               item['Paid_amount'] = item.pop('mbaspayments__Paid_amount')
+                        final_charges=calOutstandingAmount(final_charges_lst)
+
+                  elif in_data['AccType'] == 'SCUC_CC':
+                        try:
+                              final_charges_lst=list(SCUCCCBaseModel.objects.filter(Fin_code=fin_code,Letter_date=in_data['Week_no'] , PayableorReceivable = 'Payable').values('Final_charges','scuccpayments__Paid_amount'))
+                        except Exception as e:
+                              return JsonResponse(0,safe=False)
+                        
+                        for item in final_charges_lst:
+                              item['Paid_amount'] = item.pop('scuccpayments__Paid_amount')
                         final_charges=calOutstandingAmount(final_charges_lst)
 
                   else:
@@ -754,17 +767,15 @@ def getBankTxns(request):
       
 def getParentModelID(pay):
       try:
-            
             fin_code=getFincode(pay['Entity'])
-         
             if pay['AccType'] == 'DSM':
                   try:
                         # here Entity using becuase firm and infirm may have Same Fin_code 
                         try:
-                              dsm_id=DSMBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code,Final_charges=pay['Amount']).id
+                              dsm_id=DSMBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code,Final_charges=pay['Amount'],PayableorReceivable = 'Payable').id
                         except:
                               # lets say user not paid the full amount like partial payment in that case above try block fails and execute the current except block.Here not considering the amount .
-                              dsm_id=DSMBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code).id
+                              dsm_id=DSMBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code , PayableorReceivable = 'Payable').id
                         pay['id']=dsm_id
                   except:
                         return False , pay
@@ -773,9 +784,9 @@ def getParentModelID(pay):
                   try:
                         # here Entity using becuase firm and infirm may have Same Fin_code 
                         try:
-                              netas_id=NetASBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code,Final_charges=pay['Amount']).id
+                              netas_id=NetASBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code,Final_charges=pay['Amount'],PayableorReceivable = 'Payable').id
                         except:
-                              netas_id=NetASBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code).id
+                              netas_id=NetASBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code,PayableorReceivable = 'Payable').id
                         pay['id']=netas_id
                   except:
                         return False , pay
@@ -784,9 +795,9 @@ def getParentModelID(pay):
                   try:
                         # here Entity using becuase firm and infirm may have Same Fin_code 
                         try:
-                              legacy_id=LegacyBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code,Final_charges=pay['Amount']).id
+                              legacy_id=LegacyBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code,Final_charges=pay['Amount'],PayableorReceivable = 'Payable').id
                         except:
-                              legacy_id=LegacyBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code).id
+                              legacy_id=LegacyBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code,PayableorReceivable = 'Payable').id
                         pay['id']=legacy_id
                   except:
                         return False , pay
@@ -801,13 +812,24 @@ def getParentModelID(pay):
                         pay['id'] = shortfall_id
                   except:
                         return False , pay
+                  
+            elif pay['AccType'] == 'SCUC_CC':
+                  try:
+                        # here Entity using becuase firm and infirm may have Same Fin_code 
+                        try:
+                              shortfall_id= SCUCCCBaseModel.objects.get(Letter_date=pay['Week_no'],Fin_code=fin_code,Final_charges=pay['Amount'] ,PayableorReceivable = 'Payable').id
+                        except:
+                              shortfall_id=SCUCCCBaseModel.objects.get(Letter_date=pay['Week_no'],Fin_code=fin_code ,PayableorReceivable = 'Payable').id
+                        pay['id'] = shortfall_id
+                  except:
+                        return False , pay
 
             elif pay['AccType'] == 'REAC':
                   try:
                         try:
-                              reac_id=REACBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code,Final_charges=pay['Amount']).id
+                              reac_id=REACBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code,Final_charges=pay['Amount'],PayableorReceivable = 'Payable').id
                         except:
-                              reac_id=REACBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code).id
+                              reac_id=REACBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code,PayableorReceivable = 'Payable').id
                         pay['id']=reac_id
                   except:
                         return False , pay
@@ -815,9 +837,9 @@ def getParentModelID(pay):
             elif pay['AccType'] == 'MBAS':
                   try:
                         try:
-                              mbas_id=MBASBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code,Final_charges=pay['Amount']).id
+                              mbas_id=MBASBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code,Final_charges=pay['Amount'],PayableorReceivable = 'Payable').id
                         except:
-                              mbas_id=MBASBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code,Letter_date = pay['Week_no']).id
+                              mbas_id=MBASBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code,Letter_date = pay['Week_no'],PayableorReceivable = 'Payable').id
                         pay['id']=mbas_id
                   except:
                         return False , pay
@@ -843,9 +865,9 @@ def getParentModelID(pay):
             elif pay['AccType'] == 'CONG':
                   try:
                         try:
-                              cong_id=CONGBaseModel.objects.get(Fin_code=fin_code,Final_charges=pay['Amount']).id
+                              cong_id=CONGBaseModel.objects.get(Fin_code=fin_code,Final_charges=pay['Amount'],PayableorReceivable = 'Payable').id
                         except:
-                              cong_id=CONGBaseModel.objects.get(Fin_code=fin_code).id
+                              cong_id=CONGBaseModel.objects.get(Fin_code=fin_code,Week_no=pay['Week_no'],PayableorReceivable = 'Payable').id
 
                         pay['id']=cong_id
                   except:
@@ -859,9 +881,9 @@ def getParentModelID(pay):
             elif pay['AccType'] == 'SRAS':
                   try:
                         try:
-                              sras_id=SRASBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code,Final_charges=pay['Amount']).id
+                              sras_id=SRASBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code,Final_charges=pay['Amount'],PayableorReceivable = 'Payable').id
                         except:
-                              sras_id=SRASBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code).id
+                              sras_id=SRASBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code,PayableorReceivable = 'Payable').id
 
                         pay['id']=sras_id
                   except:
@@ -870,9 +892,9 @@ def getParentModelID(pay):
             elif pay['AccType'] == 'TRAS':
                   try:
                         try:
-                              tras_id=TRASBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code,Final_charges=pay['Amount']).id
+                              tras_id=TRASBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code,Final_charges=pay['Amount'],PayableorReceivable = 'Payable').id
                         except:
-                              tras_id=TRASBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code).id
+                              tras_id=TRASBaseModel.objects.get(Fin_year=pay['Fin_year'],Week_no=pay['Week_no'],Fin_code=fin_code,PayableorReceivable = 'Payable').id
                         pay['id']=tras_id
                   except:
                         return False , pay
@@ -880,6 +902,7 @@ def getParentModelID(pay):
             else:
                   return False , pay
             
+
             return True, pay
       except Exception as e:
             extractdb_errormsg(e)
@@ -895,7 +918,7 @@ def saveBankPayments(request):
                   already_mapped_amt=MappedBankEntries.objects.filter(ValueDate_fk=row['id']).exclude(Status='R').values('ValueDate_fk').annotate(total_amount=Sum('Amount'))
                   # no entry found means no txn mapped so assign total_amount
                   mapped_amount =already_mapped_amt[0]['total_amount'] if len(already_mapped_amt) else 0
-                  left_over_bal=float(row['Credit']) - mapped_amount  
+                  left_over_bal=float(row['Credit']) - mapped_amount
                   for pay in row['userFields']:
                         # AccType not null means atleast one entry mapped
                         if pay['AccType']!='' and pay['checked'] == True:
@@ -991,7 +1014,7 @@ def check_string(s):
             return False
       
 def approveNetASPayments(row,fin_code):
-      netas_qry=list(NetASBaseModel.objects.filter(Fin_year=row['Fin_year'],Week_no=row['Week_no'],Entity=row['Entity'],Fin_code=fin_code,Legacy_dues=False).all().values())
+      netas_qry=list(NetASBaseModel.objects.filter(Fin_year=row['Fin_year'],Week_no=row['Week_no'],Fin_code=fin_code,Legacy_dues=False).all().values())
       if len(netas_qry):
             # first check whether full amount paid or not
             if row['Amount'] == netas_qry[0]['Final_charges']:
@@ -1423,6 +1446,16 @@ def approvePayments(request):
                                     Other_info=row['Other_info'],
                                     Bank_type=row['ValueDate_fk_id__BankType'],
                                     paystatus_fk=mbas_obj_qry
+                              ).save()
+                        elif row['Pool_Acc'] == 'SCUC_CC':
+                              scucc_obj_qry=SCUCCCBaseModel.objects.get(id=row['Parent_id'])
+                              SCUCCPayments(
+                                    Paid_date=row['ValueDate_fk_id__ValueDate']  ,
+                                    Description=row['ValueDate_fk_id__Description'],
+                                    Paid_amount=float(row['Amount']),
+                                    Other_info=row['Other_info'],
+                                    Bank_type=row['ValueDate_fk_id__BankType'],
+                                    paystatus_fk=scucc_obj_qry
                               ).save()
                               
                         elif row['Pool_Acc'] == 'SWEEP':

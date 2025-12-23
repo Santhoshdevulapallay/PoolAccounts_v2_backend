@@ -140,7 +140,7 @@ def transferSurplus(request):
         # Accessing and processing the 'row' data, which is a JSON string
         intimated_rows = json.loads(request.POST.get('row'))
 
-        dis_status = list( DisbursementStatus.objects.filter(final_disburse=True).order_by('-Disbursed_date')[:1].values())
+        dis_status = list( DisbursementStatus.objects.filter(final_disburse=True).order_by('-Disbursed_date', '-id')[:1].values())
 
         surplus_amount = int(intimated_rows[0]['amount_available']) - int(tobe_transferred)
         for row in intimated_rows:

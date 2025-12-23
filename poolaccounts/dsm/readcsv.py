@@ -34,7 +34,7 @@ def readDSMFile(path,acc_type,fin_year,week_no):
     infirm_table=[]
     infirm_table_df=pd.DataFrame([])
     final_states_gen_list=pd.DataFrame([])
-    del dfs_list[2] # removing pumped storage
+    
     for in_df in dfs_list:
       # drop NaN columns specially for InterRegional df
       in_df = in_df.dropna(axis=1,how='all') # Specify 'how' parameter to 'all' to drop columns containing all NaN values
@@ -69,7 +69,19 @@ def readDSMFile(path,acc_type,fin_year,week_no):
         # rename the columns and append to dataframe
         in_df.rename(columns={'F':'DevFinal' ,'P':'PayRcv'},inplace=True)
       elif count == 2:
-      
+        # changing the header 
+        in_df.columns = in_df.iloc[0] 
+        # skipping the first row , because it contains header only that we moved up
+        in_df=in_df.iloc[1: ]
+        in_df.columns = removeSpaceDf(in_df)
+        # names changes from Entityt:E, UnderdrawlCharges(Rs):U ,OverdrawlCharges(Rs):O
+        in_df.columns=['E','O','U','C','F','P']
+        # Drop rows with NaN values in 'PayableToPool/ReceviableFromPool' column
+        in_df = in_df.dropna(subset=['P'])
+        in_df=in_df[['E','F','P']]
+        # rename the columns and append to dataframe
+        in_df.rename(columns={'F':'DevFinal' ,'P':'PayRcv'},inplace=True)
+      elif count == 3:
         # Interregional Part
         # changing the header 
         in_df.columns = in_df.iloc[0] 
@@ -112,7 +124,7 @@ def readDSMFile(path,acc_type,fin_year,week_no):
                 Week_no=week_no,WRSR=WRSR,
                 ERSR=ERSR,WR_Revision_no=0,ER_Revision_no=0 ).save()
           
-      elif count == 3:
+      elif count == 4:
         # Infirm drawl power
         in_df.columns = in_df.iloc[0] 
         # skipping the first row , because it contains header only that we moved up
@@ -140,12 +152,11 @@ def readDSMFile(path,acc_type,fin_year,week_no):
       else:
         pass
 
-      if count!=2 and count <=3: # skip interregional part
-        if count!= 3:  #count ==3 is infirm drawl
+      if count!=3 and count <=4: # skip interregional part
+        if count!= 4:  #count ==3 is infirm drawl
           # dont add infirm drawl to main_df has to dealt separately
           final_states_gen_list=pd.concat([final_states_gen_list ,in_df]) 
       count+=1
-    
     
     # now do the mapping of each states and generator , if not mapped send to user for manual mapping
     # get all users 
@@ -608,7 +619,7 @@ def readMBASFile(path,acc_type,fin_year,week_no):
       final_df.columns = ['T' ,'N' ,'P']
     # Remove trailing spaces from the 'P' column
     final_df['P'] = final_df['P'].str.strip()
-    mapping = {'Receivable to Pool from TRAS Provider': 'Payable', 'Payable from Pool to TRAS Provider': 'Receivable'}
+    mapping = {'Receivable to Pool from TRAS Provider': 'Payable', 'Receivable by Pool from TRAS Provider': 'Payable' , 'Payable from Pool to TRAS Provider': 'Receivable'}
     final_df.iloc[:] = final_df.iloc[:].replace(mapping)
     # rename the columns
     final_df.rename(columns={'T':'Entity','N':'DevFinal','P':'PayRcv'},inplace=True)

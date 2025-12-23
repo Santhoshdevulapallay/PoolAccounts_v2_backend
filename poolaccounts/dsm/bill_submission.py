@@ -1,5 +1,5 @@
 
-from dsm.common import getWeekDates , getIRMaxRevision , getWRERCodes ,_create_columns ,format_indian_currency ,currency_to_float,add530hrstoDateString ,getMergedAccts,getFeesChargesName
+from dsm.common import getWeekDates , getIRMaxRevision , getWRERCodes ,_create_columns ,format_indian_currency ,currency_to_float,add530hrstoDateString ,getMergedAccts,getFincode
 
 from registration.extarctdb_errors import extractdb_errormsg
 from .models import *
@@ -56,8 +56,8 @@ def temporaryBills(request):
                   #       # Get fees and charges name
                   #       merged_df.loc[index, 'Entity'] = getFeesChargesName(row['Fin_code'])
                         
-                  for entity_name in merged_df['Entity'].unique():
-                        temp_df= merged_df[merged_df['Entity'] == entity_name]
+                  for fincode in merged_df['Fin_code'].unique():
+                        temp_df= merged_df[merged_df['Fin_code'] == fincode]
                         net_amount=0
                         temp_dict={
                               'Fin_year':fin_year,
@@ -71,20 +71,17 @@ def temporaryBills(request):
                               'MBAS_id':None,
                               'SCUC_id':None
                               }
+                        
                         for _,subrow in temp_df.iterrows():
                               temp_dict['Entity']=subrow['Entity']
                               temp_dict['Fin_code']=subrow['Fin_code']
                               net_amount+=subrow['DevFinal']
-
                               if subrow['Acc_type'] == 'SRAS':
                                     temp_dict['SRAS_id']=getParentTableId(subrow,fin_year,week_no)
-
                               if subrow['Acc_type'] == 'TRAS':
                                     temp_dict['TRAS_id']=getParentTableId(subrow,fin_year,week_no)
-
                               if subrow['Acc_type'] == 'MBAS':
                                     temp_dict['MBAS_id']=getParentTableId(subrow,fin_year,week_no)
-
                               if subrow['Acc_type'] == 'SCUC':
                                     temp_dict['SCUC_id']=getParentTableId(subrow,fin_year,week_no)
 
@@ -140,7 +137,67 @@ def temporaryBills(request):
       except Exception as e:
             return HttpResponse(extractdb_errormsg(e),status=400)
 
+def addBillsManually(request):
+      try:
+            formdata = json.loads(request.body)['formdata']
+            fin_year = formdata['fin_year']
+            week_no = formdata['wk_no']
+            acc_type = formdata['acc_type']
+            entity = formdata['entity']
+            week_start_date,week_end_date = getWeekDates(fin_year,week_no)
+            letter_date = add530hrstoDateString(formdata['letter_date'])
+            
+            disbursementdays_list = DisbursementDates.objects.filter( Q(pool_acc= acc_type) ,Q(end_date__isnull=True)| Q(end_date__gte=datetime.today()) ).values_list('days',flat=True)
 
+            duedays_list=PoolDuedates.objects.filter(Q(enddate__isnull=True)| Q(enddate__gte=datetime.today())).values_list('dsm',flat=True)
+
+            dueday_num=duedays_list[0] if len(duedays_list) else None
+            disburseday_num=disbursementdays_list[0] if len(disbursementdays_list) else 0
+
+            due_date= letter_date + timedelta(days= dueday_num )
+            disbursement_date= letter_date + timedelta(days= disburseday_num )
+            model_mapping = {
+                  'DSM': DSMBaseModel,
+                  'SRAS': SRASBaseModel,
+                  'TRAS': TRASBaseModel,
+                  'MBAS': MBASBaseModel,
+                  'CONG': CONGBaseModel,
+                  'REAC': REACBaseModel,
+                  'SCUC': SCUCBaseModel
+                  # Add any other account types here
+            }
+            # Look up the correct model class from the dictionary
+            ModelToUse = model_mapping.get(acc_type)
+
+            if ModelToUse:
+                  # Use the retrieved model class to create and save the instance
+                  ModelToUse(
+                        Fin_year = fin_year,
+                        Week_no = week_no,
+                        Entity = entity,
+                        Fin_code = getFincode(entity),
+                        Final_charges = formdata['final_charges'],
+                        PayableorReceivable = formdata['payableorreceivable'],
+                        Week_startdate=week_start_date ,
+                        Week_enddate=week_end_date,
+                        Letter_date= letter_date ,
+                        Due_date= due_date ,
+                        Disbursement_date= disbursement_date ,
+                        Lc_date= due_date ,
+                        Interest_levydate= due_date ,
+                        Effective_start_date=letter_date ,
+                        Is_disbursed=False
+                  ).save()
+            else:
+                  # Handle the case where the acc_type is not in the map
+                 extractdb_errormsg(f"Error: Unknown or unsupported account type '{acc_type}'")
+                  # You might want to raise an exception or return an error response here
+
+
+            return JsonResponse({'success':True , 'message': 'Bill added successfully'} , safe=False)
+      except Exception as e:
+            return JsonResponse({'success':True , 'message': str(e)} , safe=False)
+      
 def storeDSMBills(main_bills_df,disbursement_dates_qry,due_date_qry ,acc_type,letter_date,fin_year,week_no):
       try:
             week_start_date,week_end_date = getWeekDates(fin_year,week_no)
@@ -232,7 +289,7 @@ def storeDSMBills(main_bills_df,disbursement_dates_qry,due_date_qry ,acc_type,le
                         return JsonResponse({'status':True , 'message': 'DSM Bills are Submitted Successfully' },safe=False)
                   
                   except Exception as e:
-                        print(e)
+                      
                         return JsonResponse({'status':False , 'message': 'Bills are already submitted , Please check' },safe=False)
                   
       except Exception as e:

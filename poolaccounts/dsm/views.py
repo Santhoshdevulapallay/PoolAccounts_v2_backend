@@ -198,6 +198,7 @@ def uploadRPCBillManually(request):
             # Here update the all files uploaded path
             # Remove '\Zip_Data\' from the path because it is adding while validating the bill
             cleaned_path = path.replace('\\Zip_Data\\', '\\')
+            
             year_qry.update(
                   srpc_fetch_status=True,
                   fetched_time=datetime.now(),

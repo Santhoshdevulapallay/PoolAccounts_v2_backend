@@ -9,13 +9,9 @@ import smtplib
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-import smtplib
-from email.mime.application import MIMEApplication
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.mime.base import MIMEBase
-from os.path import basename
 
+from os.path import basename
+from django.db.models import Q
 import os
 from registration.models import Registration,YearCalendar
 import pandas as pd
@@ -32,7 +28,7 @@ def mail_sender(to_list,html_body,subject):
         server = smtplib.SMTP(smtp_server,port)
         server.starttls()
         server.login(username,password)
-        cc="Nair.rethi@grid-india.in,phaneendra@grid-india.in,korangi@grid-india.in,dsmsrldc@grid-india.in"
+        cc="sureshraj@grid-india.in,phaneendra@grid-india.in,korangi@grid-india.in,dsmsrldc@grid-india.in"
         
         message = MIMEMultipart('alternative')
         message["Subject"] =subject
@@ -73,6 +69,7 @@ def mail_sender_customizedcc(to_list,html_body,subject,cc):
     
 def sendMailNotMappedTxns(request):
     try:
+        from datetime import datetime
         formdata=json.loads(request.body)
         selected_txns_df=pd.DataFrame(formdata['selected_rows'])
         selected_txns_df.drop(columns=['id','PostDate','Debit','Balance','IsMapped','SplitStatus','IsSweep'],inplace=True)
@@ -84,7 +81,7 @@ def sendMailNotMappedTxns(request):
         selected_txns=selected_txns_df.to_dict(orient='records')
 
         selected_entities=formdata['selected_entities']
-        mail_list=list(Registration.objects.filter(fin_code__in=selected_entities).values_list('l1_mail','l2_mail'))
+        mail_list=list(Registration.objects.filter(Q(fin_code__in=selected_entities ), ( Q(end_date__isnull = True) | Q(end_date__gte = datetime.now()))).values_list('l1_mail','l2_mail'))
 
         senders_mail_list = list(set(email for email_tuple in mail_list for email in email_tuple if email))
         # Remove non-breaking spaces

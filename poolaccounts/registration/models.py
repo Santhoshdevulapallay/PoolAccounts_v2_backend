@@ -22,6 +22,7 @@ class Registration(models.Model):
       filename=models.TextField(default=None,blank=True,null=True)
       remarks=models.TextField(default=None,blank=True,null=True)
       username = models.CharField(max_length=25,default=None,blank=True,null=True)
+      owner = models.CharField(max_length=50 , default=None,blank=True,null=True)
       def __str__(self):
             return self.fees_charges_name
       

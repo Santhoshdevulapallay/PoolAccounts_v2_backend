@@ -15,7 +15,15 @@ from rest_framework import status
 def getUtilBasicDetails(request):
     try:
         in_data = json.loads(request.body)
-        basic_details_lst = list(Registration.objects.filter(Q(fin_code = in_data['fincode']) , ( Q(end_date__isnull = True) | Q(end_date__gte = datetime.datetime.today() ))).values('fees_charges_name','entity_type','l1_phone','l2_phone','l1_mail','l2_mail'))
+        sub_lst = in_data['userdata']['sub_entities_lst']
+        if len(sub_lst):
+            multi_user = True
+            fincodes = [code['fin_code'] for code in sub_lst]
+        else:
+            multi_user = False
+            fincodes = [in_data['userdata']['fin_code']]
+
+        basic_details_lst = list(Registration.objects.filter(Q(fin_code__in = fincodes) , ( Q(end_date__isnull = True) | Q(end_date__gte = datetime.datetime.today() ))).values('fees_charges_name','entity_type','l1_phone','l2_phone','l1_mail','l2_mail'))
         details_dict = {
                 'Entity Name' : 'No details found' ,
                 'Entity Type' : '',
@@ -27,7 +35,7 @@ def getUtilBasicDetails(request):
         
         if len(basic_details_lst):
             details_dict = {
-                'Entity Name' : basic_details_lst[0]['fees_charges_name'] ,
+                'Entity Name' : basic_details_lst[0]['fees_charges_name'] if not multi_user else in_data['userdata']['userName'],
                 'Entity Type' : basic_details_lst[0]['entity_type'] ,
                 'L1 Phone' : basic_details_lst[0]['l1_phone'] ,
                 'L2 Phone' : basic_details_lst[0]['l2_phone'] ,
@@ -35,7 +43,7 @@ def getUtilBasicDetails(request):
                 'L2 Mail' : basic_details_lst[0]['l2_mail'] ,
             }
 
-        bank_details_lst = list(BankDetails.objects.filter(Q(fin_code_fk__fin_code = in_data['fincode']) , ( Q(end_date__isnull = True) | Q(end_date__gte = datetime.datetime.today() ))).values('bank_account','beneficiary_name','bank_name','ifsc_code','pan_card','gst'))
+        bank_details_lst = list(BankDetails.objects.filter(Q(fin_code_fk__fin_code__in = fincodes) , ( Q(end_date__isnull = True) | Q(end_date__gte = datetime.datetime.today() ))).values('bank_account','beneficiary_name','bank_name','ifsc_code','pan_card','gst'))
         details_dict1 = {
                 'Account No' : 'No details found' ,
                 'Beneficiary Name' : '',

@@ -204,47 +204,38 @@ def getWeekMaxRevision(request):
 
         week_start_date,week_end_date=getWeekDates(fin_year,wk_no)
         entity_list = []
-
-        if in_data['acc_type'] =='DSM':
-            dsm_base_model_obj = DSMBaseModel.objects.filter(Fin_year=in_data['fin_year'],Week_no=in_data['wk_no'])
-            max_revision=dsm_base_model_obj.aggregate(Max('Revision_no'))['Revision_no__max']
-            
-            try:
-                next_revision=max_revision+1
-            except:
-                next_revision=0
+        # get from temp_revision
+        temp_model_df = pd.DataFrame(TempRevisionModel.objects.filter(Acc_type = in_data['acc_type'] , Fin_year = in_data['fin_year'] , Week_no = in_data['wk_no'] ).values('Fin_year' ,'Week_no','Fin_code','Revision_no') , columns=['Fin_year' ,'Week_no','Fin_code','Revision_no'])
         
-            entity_df = pd.DataFrame(dsm_base_model_obj.filter(Effective_end_date__isnull = True).order_by('Entity').values('id','Entity','Fin_code','Final_charges','PayableorReceivable') , columns= ['id','Entity','Fin_code','Final_charges','PayableorReceivable'])
+        if in_data['acc_type'] =='DSM':
+            entity_df = pd.DataFrame(DSMBaseModel.objects.filter(Fin_year=in_data['fin_year'],Week_no=in_data['wk_no']).filter(Effective_end_date__isnull = True).order_by('Entity').values('id','Entity','Fin_code','Final_charges','PayableorReceivable') , columns= ['id','Entity','Fin_code','Final_charges','PayableorReceivable'])
+            
             entity_df['Revised_charges'] = 0
             entity_df['RevisedPayableorReceivable'] = '' 
-
-        if in_data['acc_type'] =='NET_AS':
+            
+        elif in_data['acc_type'] =='NET_AS':
             netas_base_model_obj = NetASBaseModel.objects.filter(Fin_year=in_data['fin_year'],Week_no=in_data['wk_no'])
             max_revision=netas_base_model_obj.aggregate(Max('Revision_no'))['Revision_no__max']
             
-            try:
-                next_revision=max_revision+1
-            except:
-                next_revision=0
-        
             entity_df = pd.DataFrame(netas_base_model_obj.filter(Effective_end_date__isnull = True).order_by('Entity').values('id','Entity','Fin_code','Final_charges','PayableorReceivable') , columns= ['id','Entity','Fin_code','Final_charges','PayableorReceivable'])
             entity_df['Revised_charges'] = 0
             entity_df['RevisedPayableorReceivable'] = '' 
         
-        if in_data['acc_type'] =='REAC':
+        elif in_data['acc_type'] =='REAC':
             reac_base_model_obj = REACBaseModel.objects.filter(Fin_year=in_data['fin_year'],Week_no=in_data['wk_no'])
             max_revision=reac_base_model_obj.aggregate(Max('Revision_no'))['Revision_no__max']
             
-            try:
-                next_revision=max_revision+1
-            except:
-                next_revision=0
         
             entity_df = pd.DataFrame(reac_base_model_obj.filter(Effective_end_date__isnull = True).order_by('Entity').values('id','Entity','Fin_code','Final_charges','PayableorReceivable') , columns= ['id','Entity','Fin_code','Final_charges','PayableorReceivable'])
             entity_df['Revised_charges'] = 0
             entity_df['RevisedPayableorReceivable'] = '' 
-         
-        return JsonResponse({'next_revision':next_revision,'week_start_date':week_start_date,'week_end_date':week_end_date , 'entity_list':entity_df.to_dict(orient = 'records')},safe=False)
+        else:
+            return HttpResponse(f"Not a valid account type" , status =400)
+        
+        #  merge df
+        merged_df = pd.merge(entity_df , temp_model_df , on = ['Fin_code','Week_no','Fin_code'] , how = 'left')
+            
+        return JsonResponse({'week_start_date':week_start_date,'week_end_date':week_end_date , 'entity_list':entity_df.to_dict(orient = 'records')},safe=False)
     
     except Exception as e:
         return HttpResponse(extractdb_errormsg(e),status=400)
@@ -328,134 +319,84 @@ def getRevisionCheckBillsUserEntry(request):
         return HttpResponse(extractdb_errormsg(e),status=400)
 
 
-
+def saveTempRevisionBills(fincode,letter_date,formdata,row):
+    try:
+        TempRevisionModel(
+            Fin_code=fincode ,  
+            Letter_date=letter_date ,
+            Week_startdate=add530hrstoDateString(formdata['week_start_date']).date()  ,
+            Week_enddate=add530hrstoDateString(formdata['week_end_date']).date()  ,
+            Acc_type= formdata['acc_type'] ,
+            Entity= row['Entity'] ,
+            Revised_charges= row['Revised_charges'] ,
+            PayableorReceivable = row['RevisedPayableorReceivable'] ,
+            Remarks= formdata['remarks'] ,
+            Parent_revision_fk= row['id'] ,
+            Revision_no = formdata['revision_no']
+        ).save()
+        return True
+    except Exception as e:
+        extractdb_errormsg(e)
+        return False
+        
 def saveRevisionBill(request):
     try:
-        indata=json.loads(request.body)
-        formdata=indata['formdata']
-        effective_start_date=add530hrstoDateString(formdata['revision_date']).date()
-        prev_end_date=effective_start_date-timedelta(days=1)
-        table_data=indata['bills']
-        if formdata['acc_type'] == 'DSM':
-            dsm_obj=DSMBaseModel.objects.filter(Fin_year=formdata['fin_year'],Week_no=formdata['wk_no'],Effective_end_date__isnull =True)
-            for row in table_data:
-                fin_code=getFincode(row['Entity'])
-                # first get the old record
-                old_record=list(dsm_obj.filter(Fin_code=row['Fin_code'] ,  PayableorReceivable = row['PayableorReceivable'],id=row['id']).all().values())
-                # first update Effective_end_date of existing record
-                dsm_obj.filter(Fin_code=row['Fin_code'],id=row['id']).update(Effective_end_date=prev_end_date)
-                # create new record with same old data little change
-                if len(old_record):
-                    temp_dict=dict(old_record[0])
-                    del temp_dict['id']
-
-                    temp_dict['Effective_start_date']=effective_start_date
-                    temp_dict['Effective_end_date']=None
-                    temp_dict['Letter_date']=effective_start_date
-                    temp_dict['Due_date']=None
-                    temp_dict['Disbursement_date']=None
-                    temp_dict['Lc_date']=None
-                    temp_dict['Interest_levydate']=None
-                    temp_dict['Is_disbursed']=False
-                    temp_dict['Fully_disbursed']=None
-                    temp_dict['Revision_no']=formdata['revision_no']
-                    temp_dict['Final_charges']=row['Revised_charges']
-                    temp_dict['PayableorReceivable']=row['RevisedPayableorReceivable']
-                    temp_dict['Remarks']=formdata['remarks']
-                    new_record=DSMBaseModel.objects.create(**temp_dict)
-                    # now change the existing paid_amount mapping to new record
-                    Payments.objects.filter(paystatus_fk=row['id']).update(paystatus_fk=new_record)
-                    DSMReceivables.objects.filter(rcvstatus_fk=row['id']).update(rcvstatus_fk=new_record)
+        indata = json.loads(request.body)
+        formdata = indata.get('formdata', {})
+        table_data = indata.get('bills', [])
         
-        if formdata['acc_type'] == 'REAC':
-            reac_obj=REACBaseModel.objects.filter(Fin_year=formdata['fin_year'],Week_no=formdata['wk_no'],Effective_end_date__isnull =True)
+        # 1. Define valid account types
+        valid_acc_types = {'DSM', 'REAC', 'NET_AS'}
+        acc_type = formdata.get('acc_type')
 
-            for row in table_data:
-                fin_code=getFincode(row['Entity'])
-                # first get the old record
-                old_record=list(reac_obj.filter(Fin_code=row['Fin_code'] ,  PayableorReceivable = row['PayableorReceivable'],id=row['id']).all().values())
-                
-                # create new record with same old data little change
+        # 2. Early exit for invalid account type
+        if acc_type not in valid_acc_types:
+            return HttpResponse("Invalid Account Type", status=400)
 
-                if len(old_record):
-                    temp_dict=dict(old_record[0])
-                    del temp_dict['id']
-                    temp_dict['Effective_start_date']=effective_start_date
-                    temp_dict['Effective_end_date']=None
-                    temp_dict['Letter_date']=effective_start_date
-                    temp_dict['Due_date']=None
-                    temp_dict['Disbursement_date']=None
-                    temp_dict['Lc_date']=None
-                    temp_dict['Interest_levydate']=None
-                    temp_dict['Is_disbursed']=False
-                    temp_dict['Fully_disbursed']=None
-                    temp_dict['Revision_no']=formdata['revision_no']
-                    temp_dict['Final_charges']=row['Revised_charges']
-                    temp_dict['PayableorReceivable']=row['RevisedPayableorReceivable']
-                    temp_dict['Remarks']=formdata['remarks']
-                    new_record=REACBaseModel.objects.create(**temp_dict)
-                    # now change the existing paid_amount mapping to new record
-                    REACPayments.objects.filter(paystatus_fk=row['id']).update(paystatus_fk=new_record)
-                    REACReceivables.objects.filter(rcvstatus_fk=row['id']).update(rcvstatus_fk=new_record)
-                    # first update Effective_end_date of existing record
-                    reac_obj.filter(Fin_code=row['Fin_code'],id=row['id']).update(Effective_end_date=prev_end_date)
-        
-        if formdata['acc_type'] == 'NET_AS':
-            netas_obj=NetASBaseModel.objects.filter(Fin_year=formdata['fin_year'],Week_no=formdata['wk_no'],Effective_end_date__isnull =True)
-            for row in table_data:
-                fin_code=getFincode(row['Entity'])
-                # first get the old record
-                old_record=list(netas_obj.filter(Fin_code=row['Fin_code'] ,  PayableorReceivable = row['PayableorReceivable'],id=row['id']).all().values())
-                # first update Effective_end_date of existing record
+        # 3. Process date once
+        effective_start_date = add530hrstoDateString(formdata['revision_date']).date()
 
-                # create new record with same old data little change
-                if len(old_record):
-                    temp_dict=dict(old_record[0])
-                    del temp_dict['id']
-
-                    temp_dict['Effective_start_date']=effective_start_date
-                    temp_dict['Effective_end_date']=None
-                    temp_dict['Letter_date']=effective_start_date
-                    temp_dict['Due_date']=None
-                    temp_dict['SRAS_id']= temp_dict['SRAS_id']
-                    temp_dict['TRAS_id']= temp_dict['TRAS_id']
-                    temp_dict['MBAS_id']= temp_dict['MBAS_id']
-                    temp_dict['SCUC_id'] = temp_dict['SCUC_id']
-                    temp_dict['Is_disbursed']=False
-                    temp_dict['Fully_disbursed']=None
-                    temp_dict['Revision_no']=formdata['revision_no']
-                    temp_dict['Final_charges']=row['Revised_charges']
-                    temp_dict['PayableorReceivable']=row['RevisedPayableorReceivable']
-                    temp_dict['Remarks']=formdata['remarks']
-                    new_record=NetASBaseModel.objects.create(**temp_dict)
-                    # now change the existing paid_amount mapping to new record
-                    NetASPayments.objects.filter(paystatus_fk=row['id']).update(paystatus_fk=new_record)
-                    NetASReceivables.objects.filter(rcvstatus_fk=row['id']).update(rcvstatus_fk=new_record)
-                    netas_obj.filter(Fin_code=row['Fin_code'],id=row['id']).update(Effective_end_date=prev_end_date)
+        # 4. Consolidated logic loop
+        for row in table_data:
+            fincode = getFincode(row.get('Entity'))
+            check_status = saveTempRevisionBills(fincode, effective_start_date, formdata, row)
             
-        return JsonResponse([],safe=False)
-    
-    except Exception as e:
-        
-        return HttpResponse(extractdb_errormsg(e),status=400)
-    
+            if not check_status:
+                return HttpResponse('Error in saving temp revision bills', status=400)
+                
+        return JsonResponse([], safe=False)
 
+    except Exception as e:
+        # It's good practice to log the actual error 'e' here for internal debugging
+        return HttpResponse(extractdb_errormsg(e), status=400)
+    
 def getAllRevisionDates(request):
     try:
         pool_accs=getAllPoolAccs()
         filtered_pool_accs = [item for item in pool_accs if 'REVISION' in item]
 
-        #now get the old revision dates for 3 pool accounts
-        dsm_revision_dates=list(DSMBaseModel.objects.filter(Revision_no__gte=1).distinct('Effective_start_date').order_by('-Effective_start_date').values_list('Effective_start_date',flat=True))
+        # #now get the old revision dates for 3 pool accounts
+        # dsm_revision_dates=list(DSMBaseModel.objects.filter(Revision_no__gte=1).distinct('Effective_start_date').order_by('-Effective_start_date').values_list('Effective_start_date',flat=True))
         
-        reac_revision_dates=list(REACBaseModel.objects.filter(Revision_no__gte=1).distinct('Effective_start_date').order_by('-Effective_start_date').values_list('Effective_start_date',flat=True))
+        # reac_revision_dates=list(REACBaseModel.objects.filter(Revision_no__gte=1).distinct('Effective_start_date').order_by('-Effective_start_date').values_list('Effective_start_date',flat=True))
 
-        netas_revision_dates=list(NetASBaseModel.objects.filter(Revision_no__gte=1).distinct('Effective_start_date').order_by('-Effective_start_date').values_list('Effective_start_date',flat=True))
+        # netas_revision_dates=list(NetASBaseModel.objects.filter(Revision_no__gte=1).distinct('Effective_start_date').order_by('-Effective_start_date').values_list('Effective_start_date',flat=True))
 
-        filtered_dates=set(dsm_revision_dates+reac_revision_dates+netas_revision_dates)
+        # filtered_dates=set(dsm_revision_dates+reac_revision_dates+netas_revision_dates)
 
-        sorted_list = list(filtered_dates)
+        # sorted_list = list(filtered_dates)
         
+        # get Revision dates from TempRevisionModel as well
+        sorted_list = list(
+            TempRevisionModel.objects
+            .distinct('Letter_date')
+            .order_by('-Letter_date')
+            .values_list('Letter_date', flat=True)
+        )
+
+        # sort if needed (though already ordered by queryset)
+        sorted_list.sort(reverse=True)
+
         return JsonResponse([filtered_pool_accs,sorted_list],safe=False)
     
     except Exception as e:
@@ -513,6 +454,147 @@ def netRevisionCalc(rev_df):
         return pd.DataFrame([])
     
 def netRevisionBills(request):
+    try:
+        formdata=json.loads(request.body)
+        if formdata['acc_type'] == 'DSM_REVISION':
+            dsm_temp_stored_bills = list(TempRevisionModel.objects.filter(Letter_date=formdata['revision_date'],Acc_type='DSM').all().values())
+            all_rev_bills_df = pd.DataFrame([])
+            for row in dsm_temp_stored_bills:
+                qs = (
+                    DSMBaseModel.objects
+                    .filter(id=row['Parent_revision_fk'])
+                    .values(
+                        'Fin_year',
+                        'Week_no',
+                        'Week_startdate',
+                        'Week_enddate',
+                        'Entity',
+                        'Final_charges',
+                        'PayableorReceivable',
+                        'Fin_code',
+                        'payments__Paid_amount',
+                        'dsmreceivables__Disbursed_amount',
+                    )
+                )
+
+                temp_df = pd.DataFrame.from_records(qs)
+                if not temp_df.empty:
+                    temp_df['Final_charges'] = row['Revised_charges']
+                    temp_df['PayableorReceivable'] = row['PayableorReceivable']
+                    all_rev_bills_df = pd.concat([all_rev_bills_df, temp_df], ignore_index=True)
+
+            all_rev_bills_df.rename(columns={'payments__Paid_amount':'Paid_amount','dsmreceivables__Disbursed_amount':'Disbursed_amount'},inplace=True)
+
+        elif formdata['acc_type'] == 'REAC_REVISION':
+            reac_temp_stored_bills = list(TempRevisionModel.objects.filter(Letter_date=formdata['revision_date'],Acc_type='REAC').all().values())
+            all_rev_bills_df = pd.DataFrame([])
+            for row in reac_temp_stored_bills:
+                qs = (
+                    REACBaseModel.objects
+                    .filter(id=row['Parent_revision_fk'])
+                    .values(
+                        'Fin_year',
+                        'Week_no',
+                        'Week_startdate',
+                        'Week_enddate',
+                        'Entity',
+                        'Final_charges',
+                        'PayableorReceivable',
+                        'Fin_code',
+                        'reacpayments__Paid_amount',
+                        'reacreceivables__Disbursed_amount',
+                    )
+                )
+
+                temp_df = pd.DataFrame.from_records(qs)
+                if not temp_df.empty:
+                    temp_df['Final_charges'] = row['Revised_charges']
+                    temp_df['PayableorReceivable'] = row['PayableorReceivable']
+                    all_rev_bills_df = pd.concat([all_rev_bills_df, temp_df], ignore_index=True)
+
+            # rename the columns
+            all_rev_bills_df.rename(columns={'reacpayments__Paid_amount':'Paid_amount','reacreceivables__Disbursed_amount':'Disbursed_amount'},inplace=True)
+
+        elif formdata['acc_type'] == 'NETAS_REVISION':
+            netas_temp_stored_bills = list(TempRevisionModel.objects.filter(Letter_date=formdata['revision_date'],Acc_type='REAC').all().values())
+            all_rev_bills_df = pd.DataFrame([])
+            for row in netas_temp_stored_bills:
+                qs = (
+                    NetASBaseModel.objects
+                    .filter(id=row['Parent_revision_fk'])
+                    .values(
+                        'Fin_year',
+                        'Week_no',
+                        'Week_startdate',
+                        'Week_enddate',
+                        'Entity',
+                        'Final_charges',
+                        'PayableorReceivable',
+                        'Fin_code',
+                        'netaspayments__Paid_amount',
+                        'netasreceivables__Disbursed_amount',
+                    )
+                )
+
+                temp_df = pd.DataFrame.from_records(qs)
+                if not temp_df.empty:
+                    temp_df['Final_charges'] = row['Revised_charges']
+                    temp_df['PayableorReceivable'] = row['PayableorReceivable']
+                    all_rev_bills_df = pd.concat([all_rev_bills_df, temp_df], ignore_index=True)
+
+            # rename the columns
+            all_rev_bills_df.rename(columns={'netaspayments__Paid_amount':'Paid_amount','netasreceivables__Disbursed_amount':'Disbursed_amount'},inplace=True)
+        else:
+            return JsonResponse([],safe=False)
+        
+        all_rev_bills_df['Paid_amount']=all_rev_bills_df['Paid_amount'].fillna(0)
+        all_rev_bills_df['Disbursed_amount']=all_rev_bills_df['Disbursed_amount'].fillna(0)
+        
+        temp_dsm_rev_bills=all_rev_bills_df.copy()
+        # remove NaN with empty 
+        all_rev_bills_df=all_rev_bills_df.fillna('')
+        net_rev_df=netRevisionCalc(all_rev_bills_df)
+        all_rev_bills_df[['Final_charges', 'Paid_amount','Disbursed_amount']] = all_rev_bills_df[['Final_charges', 'Paid_amount','Disbursed_amount']].abs()
+        net_rev_df.fillna('')
+        # modify values according to front end
+        final_transform_list=[]
+        for _,row in net_rev_df.iterrows():
+            sub_bills=temp_dsm_rev_bills[temp_dsm_rev_bills['Fin_code']==row['Fin_code']].to_dict(orient='records')
+           
+            sub_bills_df=pd.DataFrame(sub_bills).groupby(['Fin_year', 'Week_no', 'Fin_code']).agg({
+            'Entity':'first',
+            'Week_startdate': 'first',
+            'Week_enddate': 'first',
+            'Final_charges' : 'mean',
+            'PayableorReceivable': 'first',
+            'Paid_amount': 'sum',
+            'Disbursed_amount': 'sum'
+            }).reset_index()
+            
+            sub_bills_df['Final_charges'] = sub_bills_df.apply(
+                lambda row: row['Final_charges'] * -1 if row['PayableorReceivable'] == 'Receivable' else row['Final_charges'],
+                axis=1
+            )
+            sub_bills_df['Paid_amount']=sub_bills_df['Paid_amount']*-1
+            sub_bills_df['Diff_amount'] = sub_bills_df['Final_charges']+sub_bills_df['Paid_amount']+sub_bills_df['Disbursed_amount']
+            
+            sub_bills_df['Paid_amount'] = sub_bills_df['Paid_amount'].abs()
+            sub_bills_df['Final_charges'] = sub_bills_df['Final_charges'].abs()
+            sub_bills_df['Disbursed_amount'] = sub_bills_df['Disbursed_amount'].abs()
+            sub_bills_df['Diff_amount'] = sub_bills_df['Diff_amount']
+
+            temp_dict=row.to_dict()
+            temp_dict['isExpand']=False
+            temp_dict['billbreakup']=sub_bills_df.to_dict(orient='records')
+            final_transform_list.append(temp_dict)
+
+        
+        return JsonResponse([final_transform_list],safe=False)
+        
+    except Exception as e:
+        return HttpResponse(extractdb_errormsg(e),status=400)
+    
+def netRevisionBills1(request):
     try:
         formdata=json.loads(request.body)
         common_qry=Q(Letter_date=formdata['revision_date'],Revision_no__gte=1)
@@ -655,7 +737,7 @@ def storeNetRevisionBills(request):
         net_entities_df['Letter_date']=formdata['revision_date']
         net_entities_df['Acc_type']=formdata['acc_type']
         net_entities_df['Is_disbursed']=False
-
+       
         try:
             with engine.connect() as connection:
                 net_entities_df.to_sql('revision_basemodel', connection, if_exists='append', index=False)
@@ -870,7 +952,7 @@ def revisionGenIOM(request):
         merged_payables_df.drop(columns=['id'],inplace=True)
         all_payables=[]
         # get the latest record from disbursement status and update DisbursementStatus
-        latest_record_amt =list(DisbursementStatus.objects.filter(final_disburse = True).order_by('-Disbursed_date')[:1].values('Surplus_amt'))
+        latest_record_amt =list(DisbursementStatus.objects.filter(final_disburse = True).order_by('-Disbursed_date', '-id')[:1].values('Surplus_amt'))
         
         for _,row in merged_payables_df.iterrows():
             actual_payable_amt=row['Final_charges']
@@ -891,7 +973,6 @@ def revisionGenIOM(request):
         # ***************** receivables section ****************
         all_receivables=[]
         receivables_df=pd.DataFrame(base_qry.filter(PayableorReceivable='Receivable').values('Letter_date','Entity','Final_charges','Fin_code','id'),columns=['Letter_date','Entity','Final_charges','Fin_code','id'])
-
         
         if latest_record_amt[0]['Surplus_amt'] >= receivables_df['Final_charges'].sum():
             amount_disbursing=0
@@ -913,7 +994,7 @@ def revisionGenIOM(request):
                 except: 
                     pass
             # get the latest record from disbursement status and update DisbursementStatus
-            latest_record=list(DisbursementStatus.objects.filter(final_disburse = True).order_by('-Disbursed_date')[:1].values('id','remarks'))
+            latest_record=list(DisbursementStatus.objects.filter(final_disburse = True).order_by('-Disbursed_date', '-id')[:1].values('id','remarks'))
 
             if latest_record:
                 remarks = latest_record[0]['remarks']+'_The amount disbursed for the revised IOM dated '+revision_date+' for account type '+acc_type+'.' 

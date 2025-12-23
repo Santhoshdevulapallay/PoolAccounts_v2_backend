@@ -29,6 +29,8 @@ from django.db.models.functions import Coalesce
 from dsm.common import keys
 from dsm.models import *
 from dsm.common import getBankShortNames , getFincode,getFeesChargesName
+from .auth_service import checksubownersList
+
 def getDisbursedStatus(model_obj_qry,fin_year,week_no,col_name):
       try:
             # status
@@ -50,9 +52,14 @@ def getDisbursedStatus(model_obj_qry,fin_year,week_no,col_name):
 def getDashboardData(request):
       try:
             request_data=json.loads(request.body)
-            fincode = request_data['fincode']
+            # check is user a owner or not
+            sub_entities_lst = checksubownersList(request_data['userdata']['userName'])
+            if len(sub_entities_lst):
+                  fincode = [code['fin_code'] for code in sub_entities_lst]
+            else:
+                  fincode = [request_data['userdata']['fin_code']]
             # last week surplus , taking only latest disbursed value
-            last_week_surplus_qry=list(DisbursementStatus.objects.filter(final_disburse=True).order_by('-Disbursed_date')[:1].values('Surplus_amt'))
+            last_week_surplus_qry=list(DisbursementStatus.objects.filter(final_disburse=True).order_by('-Disbursed_date', '-id')[:1].values('Surplus_amt'))
             last_week_surplus_amt=last_week_surplus_qry[0]['Surplus_amt']
 
             # get last 5 weeeks
@@ -85,28 +92,31 @@ def getDashboardData(request):
             # get the oustanding dues as on date
             final_outstanding_df=pd.DataFrame([])
             # to show in dashboard considering only DSM and REAC
-            for acc_type in ['DSM','REAC','NET_AS','Legacy','Shortfall']:
+            for acc_type in ['DSM','REAC','NET_AS','Legacy','Shortfall','CONG']:
                   _,grouped_df=getOustandingdf(acc_type)
                   grouped_df['PoolAcc']=acc_type
                   final_outstanding_df=pd.concat([final_outstanding_df,grouped_df])
-            
-            if fincode is None :
+           
+            if fincode[0] is None :
                   dsm_sum = final_outstanding_df[final_outstanding_df['PoolAcc']=='DSM']['Outstanding'].sum()
                   reac_sum = final_outstanding_df[final_outstanding_df['PoolAcc']=='REAC']['Outstanding'].sum()
                   netas_sum = final_outstanding_df[final_outstanding_df['PoolAcc']=='NET_AS']['Outstanding'].sum()
                   legacy_sum = final_outstanding_df[final_outstanding_df['PoolAcc']=='Legacy']['Outstanding'].sum()
                   last_st_upload = BankStatement.objects.values_list("ValueDate",flat=True).last().strftime("%d.%m.%Y")
                   shortfall_sum = final_outstanding_df[final_outstanding_df['PoolAcc']=='Shortfall']['Outstanding'].sum()
-                  total = dsm_sum+reac_sum+netas_sum+legacy_sum+shortfall_sum
+                  cong_sum = final_outstanding_df[final_outstanding_df['PoolAcc']=='CONG']['Outstanding'].sum()
+                  total = dsm_sum+reac_sum+netas_sum+legacy_sum+shortfall_sum+cong_sum
             # sort based on highest outstanding
             else :
-                  dsm_sum = final_outstanding_df[(final_outstanding_df['PoolAcc']=='DSM')&(final_outstanding_df['Fin_code']==fincode)]['Outstanding'].sum()
-                  reac_sum = final_outstanding_df[(final_outstanding_df['PoolAcc']=='REAC')&(final_outstanding_df['Fin_code']==fincode)]['Outstanding'].sum()
-                  netas_sum = final_outstanding_df[(final_outstanding_df['PoolAcc']=='NET_AS')&(final_outstanding_df['Fin_code']==fincode)]['Outstanding'].sum()
-                  legacy_sum = final_outstanding_df[(final_outstanding_df['PoolAcc']=='Legacy')&(final_outstanding_df['Fin_code']==fincode)]['Outstanding'].sum()
+                  dsm_sum = final_outstanding_df[(final_outstanding_df['PoolAcc']=='DSM')&(final_outstanding_df['Fin_code'].isin(fincode))]['Outstanding'].sum()
+                  reac_sum = final_outstanding_df[(final_outstanding_df['PoolAcc']=='REAC')&(final_outstanding_df['Fin_code'].isin(fincode))]['Outstanding'].sum()
+                  netas_sum = final_outstanding_df[(final_outstanding_df['PoolAcc']=='NET_AS')&(final_outstanding_df['Fin_code'].isin(fincode))]['Outstanding'].sum()
+                  legacy_sum = final_outstanding_df[(final_outstanding_df['PoolAcc']=='Legacy')&(final_outstanding_df['Fin_code'].isin(fincode))]['Outstanding'].sum()
                   last_st_upload = BankStatement.objects.values_list("ValueDate",flat=True).last().strftime("%d.%m.%Y")
-                  shortfall_sum = final_outstanding_df[(final_outstanding_df['PoolAcc']=='Shortfall')&(final_outstanding_df['Fin_code']==fincode)]['Outstanding'].sum()
-                  total = dsm_sum+reac_sum+netas_sum+legacy_sum+shortfall_sum
+                  shortfall_sum = final_outstanding_df[(final_outstanding_df['PoolAcc']=='Shortfall')&(final_outstanding_df['Fin_code'].isin(fincode))]['Outstanding'].sum()
+                  cong_sum = final_outstanding_df[(final_outstanding_df['PoolAcc']=='CONG')&(final_outstanding_df['Fin_code'].isin(fincode))]['Outstanding'].sum()
+                  total = dsm_sum+reac_sum+netas_sum+legacy_sum+shortfall_sum+cong_sum
+
             final_outstanding_df.sort_values('Outstanding',ascending=False, inplace=True)
 
             bank_stmt_df=pd.DataFrame(BankStatement.objects.all().values(),columns=['id', 'ValueDate', 'PostDate', 'Description', 'Debit', 'Credit','Balance', 'IsMapped', 'SplitStatus', 'IsSweep', 'BankType'])
@@ -116,36 +126,33 @@ def getDashboardData(request):
             merged_df=pd.merge(bank_stmt_df,mapped_bank_df,left_on=['id'],right_on=['ValueDate_fk_id'],how='left')
             merged_df=merged_df.fillna('')
             try :
-                  entity = getFeesChargesName(fincode)
-                  merged_df = merged_df[merged_df['Entity'] == entity][['ValueDate','Description','Credit','Pool_Acc','Fin_year','Week_no','Amount']]
+                  if len(fincode) <= 1:
+                        entity = [getFeesChargesName(request_data['userdata']['fin_code'])]
+                  else:
+                        entity = [code['fees_charges_name'] for code in sub_entities_lst] 
+
+                  merged_df = merged_df[merged_df['Entity'].isin(entity)][['Entity','ValueDate','Description','Credit','Pool_Acc','Fin_year','Week_no','Amount']]
                   merged_df = merged_df.sort_values(by='ValueDate', ascending=False)
                   merged_df['ValueDate'] = pd.to_datetime(merged_df['ValueDate'])
                   merged_df['ValueDate'] = merged_df['ValueDate'].dt.strftime("%d-%m-%Y")
             except :
                   pass
       
-            disb_df = pd.DataFrame(DisbursedEntities.objects.filter(fin_code = fincode).order_by('-disstatus_fk__Disbursed_date','pool_acctype').values('pool_acctype','fin_year','week_no','final_charges','disstatus_fk__Disbursed_date') , columns=['pool_acctype','fin_year','week_no','final_charges','disstatus_fk__Disbursed_date']) 
+            disb_df = pd.DataFrame(DisbursedEntities.objects.filter(fin_code__in = fincode).order_by('-disstatus_fk__Disbursed_date','pool_acctype').values('entity','pool_acctype','fin_year','week_no','final_charges','disstatus_fk__Disbursed_date') , columns=['entity','pool_acctype','fin_year','week_no','final_charges','disstatus_fk__Disbursed_date']) 
 
-
-
-            lc_qs = LCDetails.objects.filter(fincode=fincode).values('lc_amount', 'is_opened')
+            lc_qs = LCDetails.objects.filter(fincode__in=fincode ).values('lc_amount', 'is_opened')
             if lc_qs.exists():
                   lc_details = list(lc_qs)
             else:
                   lc_details = [{'lc_amount': 0, 'is_opened': 'not_applicable'}]
-            
-            
-            lc_amount = lc_details[0]['lc_amount']*100000
-            is_opened = lc_details[0]['is_opened']
+            lc_amount = 0
+            for lc_l in lc_details:
+                  lc_amount+= lc_l['lc_amount']
 
-            if is_opened is True or is_opened == "True":
-                    is_opened = "Opened"
-            elif is_opened == 'not_applicable':
-                    is_opened = "Not Applicable"
-            elif is_opened is False or is_opened == "False":
-                    is_opened = "Not Opened"
-            
-            return JsonResponse([all_status,last_week_surplus_amt,final_outstanding_df.to_dict(orient='records'),dsm_sum,reac_sum,netas_sum,last_st_upload,legacy_sum,total,shortfall_sum,merged_df.to_dict(orient='records') , lc_details , disb_df.to_dict(orient='records'),lc_amount,is_opened ],safe=False)
+            lc_amount = lc_amount*100000  
+            is_opened = 'Open' if lc_amount > 0 else 'Not Applicable'
+
+            return JsonResponse([all_status,last_week_surplus_amt,final_outstanding_df.to_dict(orient='records'),dsm_sum,reac_sum,netas_sum,last_st_upload,legacy_sum,total,shortfall_sum,merged_df.to_dict(orient='records') , lc_details , disb_df.to_dict(orient='records'),lc_amount,is_opened,cong_sum ],safe=False)
 
       except Exception as e:
             return HttpResponse('error occured',status=404)

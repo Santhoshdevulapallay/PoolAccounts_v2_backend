@@ -143,8 +143,8 @@ def getFeesChargesName(fin_code):
 def getFincode(entity_name):
       try:
             reg_qry = Registration.objects.get(( Q(fees_charges_name=entity_name) | Q(finance_name=entity_name) | Q(dsm_name=entity_name) | Q(sras_name=entity_name) | Q(tras_name=entity_name)| Q(react_name=entity_name) ) , end_date__isnull=True)
-
-            return reg_qry.fin_code
+            
+            return reg_qry.fin_code.replace(" ", "")
       except Exception as e:
             return ''
  
@@ -273,7 +273,7 @@ def number_to_words_rupees(number):
 
 def getDisbursedWeeks(request):
       # get all disbursed weeks
-      disbursed_weeks_lst=list(DisbursementStatus.objects.filter(final_disburse=True).order_by('-Disbursed_date').values_list('Disbursed_date',flat=True))
+      disbursed_weeks_lst=list(DisbursementStatus.objects.filter(final_disburse=True).order_by('-Disbursed_date', '-id').values_list('Disbursed_date',flat=True))
 
       return JsonResponse(disbursed_weeks_lst,safe=False)
 
