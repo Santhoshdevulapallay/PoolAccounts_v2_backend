@@ -606,12 +606,12 @@ def getBillAmount(request):
                       
                   elif 'REVISION' in in_data['AccType'] :
                         try:
+                              acc_type = in_data['AccType'].split('_')[0]
                               # see here Week_no means Revision_Dates dont confuse
-                              final_charges_lst=list(RevisionBaseModel.objects.filter(Acc_type=in_data['AccType'],Letter_date=in_data['Week_no'], Fin_code=fin_code,PayableorReceivable='Payable').values('Final_charges','revisionpayments__Paid_amount'))
+                              final_charges_lst=list(RevisionBaseModel.objects.filter(Acc_type=acc_type,Letter_date=in_data['Week_no'], Fin_code=fin_code,PayableorReceivable='Payable').values('Final_charges','revisionpayments__Paid_amount'))
                         except:
                               return JsonResponse(0,safe=False)
                         # rename revisionpayments__Paid_amount to Paid_amount
-
                         for item in final_charges_lst:
                               item['Paid_amount'] = item.pop('revisionpayments__Paid_amount')
 
@@ -847,9 +847,10 @@ def getParentModelID(pay):
             elif 'REVISION' in pay['AccType'] :
                   try:
                         try:
-                              revision_id=RevisionBaseModel.objects.get(Acc_type=pay['AccType'],Fin_code=fin_code,Final_charges=pay['Amount'],Letter_date=pay['Week_no']).id
+                              acc_type = pay['AccType'].split('_')[0]
+                              revision_id=RevisionBaseModel.objects.get(Acc_type=acc_type,Fin_code=fin_code,Final_charges=pay['Amount'],Letter_date=pay['Week_no']).id
                         except:
-                              revision_id=RevisionBaseModel.objects.get(Acc_type=pay['AccType'],Fin_code=fin_code,Letter_date=pay['Week_no']).id
+                              revision_id=RevisionBaseModel.objects.get(Acc_type=acc_type,Fin_code=fin_code,Letter_date=pay['Week_no']).id
                         pay['id']=revision_id
                   except:
                         return False , pay

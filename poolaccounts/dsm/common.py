@@ -234,6 +234,26 @@ def get_month_start_end_dates(selected_month):
 
     return start_date_str, end_date_str
 
+def get_date_range(from_month_str, to_month_str):
+    """
+    Input: 'YYYY-MM' strings (e.g., '2025-12')
+    Output: Start date of from_month and End date of to_month (as date objects)
+    """
+    
+    # 1. Parse strings to date objects (defaults to 1st of month)
+    from_date = datetime.strptime(from_month_str, '%Y-%m').date()
+    to_date = datetime.strptime(to_month_str, '%Y-%m').date()
+
+    # 2. Start Date is already correct (1st of the month)
+    start_date = from_date
+    
+    # 3. Calculate End Date
+    # monthrange returns (weekday_of_first_day, number_of_days_in_month)
+    _, last_day = calendar.monthrange(to_date.year, to_date.month)
+    end_date = to_date.replace(day=last_day)
+
+    return start_date, end_date
+
 def removeInterestTail(pool_acc):
       return pool_acc.replace('_Int','')
 
@@ -298,3 +318,9 @@ def get_quarter_end_date(quarter: str, year: int) -> datetime:
             return datetime(year + 1, 3, 31)
       else:
             raise ValueError("Quarter must be one of: Q1, Q2, Q3, Q4")
+      
+def getSurplusAmount():
+      # get latest surplus amount based on latest Disbursed_date
+      latest_surplus_amount = DisbursementStatus.objects.filter().order_by('-Disbursed_date', '-id').values('Surplus_amt').first()
+      surplus_amt = latest_surplus_amount['Surplus_amt'] if latest_surplus_amount else 0
+      return surplus_amt

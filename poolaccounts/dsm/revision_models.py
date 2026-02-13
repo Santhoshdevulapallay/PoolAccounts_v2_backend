@@ -15,6 +15,7 @@ class TempRevisionModel(models.Model):
       Remarks=models.TextField(default=None,blank=True,null=True)
       Parent_revision_fk=models.IntegerField(default=None,blank=True)
       Revision_no = models.SmallIntegerField(default=None , blank=True , null=True)
+      Is_saved = models.BooleanField(default=False , blank=True,null=True)
       def __str__(self):
             return self.Letter_date
       
@@ -61,7 +62,7 @@ class RevisionPayments(models.Model):
         return self.paystatus_fk
       
       class Meta:
-            db_table = 'revision_payments'
+            db_table = 'revision_payments' 
 
 class RevisionReceivables(models.Model):
       Disbursed_amount=models.FloatField(blank=True,null=True)

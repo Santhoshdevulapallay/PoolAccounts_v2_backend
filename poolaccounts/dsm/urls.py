@@ -84,6 +84,7 @@ urlpatterns = [
       path('save_revision_bill/', views.saveRevisionBill),
       path('get_all_revision_dates/', views.getAllRevisionDates),
       path('net_revision_bills/', views.netRevisionBills),
+      path('revision_bills_iom/', views.getRevisionBillsForIOM),
       path('download_revision_draft_bill/', views.downloadRevisionDraftBill),
       path('store_net_revision_bills/', views.storeNetRevisionBills),
       # revision iom

@@ -51,8 +51,9 @@ def getMonthlyIntersetCalc(request):
             cong_delayed_payments_df=getDelayedPayments(CONGPayments,start_date_obj,end_date_obj,'CONG')
             legacy_delayed_payments_df=getDelayedPayments(LegacyPayments,start_date_obj,end_date_obj,'LEGACY')
             shortfall_delayed_payments_df = getDelayedPayments(ShortfallPayments,start_date_obj,end_date_obj,'Shortfall')
+
             payments_inselected_month_df=pd.concat([dsm_delayed_payments_df,netas_delayed_payments_df,reac_delayed_payments_df,cong_delayed_payments_df,legacy_delayed_payments_df,shortfall_delayed_payments_df])
-            
+      
             # check if already stored or not
             # Collect indices of rows to be deleted
             indices_to_drop = []
@@ -67,15 +68,18 @@ def getMonthlyIntersetCalc(request):
 
             # Filter rows where Paid_date is greater than paystatus_fk__Due_date
             filtered_df = payments_inselected_month_df[payments_inselected_month_df['Paid_date'] > payments_inselected_month_df['paystatus_fk__Due_date']].copy()
+            # replace Nan with empty
+            filtered_df.fillna('' , inplace=True)
             # Calculate the difference in days and store in a new column
             filtered_df.loc[:, 'Days_Late'] = np.where(
                   filtered_df['Acc_type'] == 'REAC', 
                   (filtered_df['Paid_date'] - filtered_df['paystatus_fk__Due_date'] - pd.Timedelta(days=2)).dt.days, 
                   (filtered_df['Paid_date'] - filtered_df['paystatus_fk__Due_date']).dt.days
                   )
+           
             # Ensure Days_Late is not negative
             filtered_df.loc[:, 'Days_Late'] = filtered_df['Days_Late'].apply(lambda x: x if x > 0 else 0)
-
+            
             filtered_df.loc[:, 'Interest_payable_topool'] = (filtered_df['Days_Late']*filtered_df['Paid_amount']*0.04)/100
             # consider amount greater than 0 only
             filtered_df=filtered_df[filtered_df['Interest_payable_topool']>0]
@@ -190,13 +194,16 @@ def storeFinalIntBills(request):
                   if row['Fin_code'] == '' or pd.isna(row['Fin_code']):
                         # get the fincode
                         stored_temp_df.at[index, 'Fin_code'] = getFincode(row['Entity'])
+            
+            result_df = stored_temp_df.groupby(['Letter_date', 'Fin_code']).agg({
+                  'Final_charges': 'sum',
+                  'Entity': 'first'
+                  }).reset_index()
 
-            # df group by Entity and sum Final_charges
-            result_df=stored_temp_df.groupby(['Entity','Fin_code'])['Final_charges'].sum().reset_index()                                                     
+            # df group by Letter_date and sum Final_charges                                           
             result_df['Letter_date']=letter_date
             # drop rows not having fin_codes
             result_df=result_df[result_df['Fin_code']!='']
-
             try:
                   with engine.connect() as connection:
                         result_df.to_sql('interest_basemodel', connection, if_exists='append',index=False)
