@@ -1,6 +1,6 @@
 import json , os , pandas as pd
 from django.http import HttpResponse , JsonResponse
-from dsm.common import add530hrstoDateString
+from dsm.common import add530hrstoDateString , getSurplusAmount
 from dsm.reports import getCalSum
 from registration.extarctdb_errors import extractdb_errormsg
 from registration.models import Registration
@@ -94,8 +94,8 @@ def getSCUCCCBills(request):
         merged_df['Disbursed_amount'].fillna(0 , inplace=True)
         merged_df["Amount_to_disburse"] = merged_df["Final_charges"].astype(float) - merged_df["Disbursed_amount"].astype(float)
         # get latest surplus amount based on latest Disbursed_date
-        latest_surplus_amount = DisbursementStatus.objects.filter().order_by('-Disbursed_date', '-id').values('Surplus_amt').first()
-        surplus_amt = latest_surplus_amount['Surplus_amt'] if latest_surplus_amount else 0
+        
+        surplus_amt = getSurplusAmount()
         
         return JsonResponse({'success':True , 'specific_bills' : merged_df.to_dict(orient='records'), 'surplus_amount': surplus_amt} , safe=False)
     except Exception as e:

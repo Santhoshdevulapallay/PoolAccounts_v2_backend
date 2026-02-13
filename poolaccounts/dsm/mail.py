@@ -147,39 +147,40 @@ def sendMailOutstandingTxns(request):
         selected_txns_df=pd.DataFrame(formdata['selected_rows'])
         cc_list=formdata['cc_list']
         cc_list_string = ", ".join(cc_list)
-        
-      
+    
         acc_type=formdata['acc_type']
         calendar_df=pd.DataFrame(YearCalendar.objects.all().values('fin_year','week_no','start_date','end_date'))
         # rename the columns
         calendar_df.rename(columns={'fin_year':'Fin_year','week_no':'Week_no'},inplace=True)
-        merged_df=pd.merge(selected_txns_df,calendar_df,on=['Fin_year','Week_no'],how='left')
-        
-        # Convert start_date and end_date to datetime format
-        merged_df['start_date'] = pd.to_datetime(merged_df['start_date'])
-        merged_df['end_date'] = pd.to_datetime(merged_df['end_date'])
-        try:
-            # Update the Week_no column with the desired format
-            merged_df['Week_no'] = merged_df.apply(
-                lambda row: f"{row['Week_no']} ({row['start_date'].strftime('%d-%m-%Y')} to {row['end_date'].strftime('%d-%m-%Y')})",
-                axis=1
-            )   
-        except:
-            # skip if error comes not a big issue
-            pass
-        
-        # drop start_date and end_date columns
-        merged_df.drop(columns=['start_date','end_date'],inplace=True)
+        if acc_type != 'Revision':
+            merged_df=pd.merge(selected_txns_df,calendar_df,on=['Fin_year','Week_no'],how='left')
+            
+            # Convert start_date and end_date to datetime format
+            merged_df['start_date'] = pd.to_datetime(merged_df['start_date'])
+            merged_df['end_date'] = pd.to_datetime(merged_df['end_date'])
+            try:
+                # Update the Week_no column with the desired format
+                merged_df['Week_no'] = merged_df.apply(
+                    lambda row: f"{row['Week_no']} ({row['start_date'].strftime('%d-%m-%Y')} to {row['end_date'].strftime('%d-%m-%Y')})",
+                    axis=1
+                )   
+            except:
+                # skip if error comes not a big issue
+                pass
+            # drop start_date and end_date columns
+            merged_df.drop(columns=['start_date','end_date'],inplace=True)
+        else:
+            merged_df = selected_txns_df
+
         # Calculate the total outstanding for each Fin_code
         merged_df['Total_outstanding'] = merged_df.groupby('Fin_code')['Outstanding'].transform('sum')
         merged_df['Outstanding']=merged_df['Outstanding'].apply(lambda x :format_indian_currency(x) )
         merged_df['Final_charges'] = merged_df['Final_charges'].apply(lambda x :format_indian_currency(x) )
         merged_df['Paid_amount'] = merged_df['Paid_amount'].apply(lambda x :format_indian_currency(x) )
         merged_df['Total_outstanding']=merged_df['Total_outstanding'].apply(lambda x :format_indian_currency(x) )
-       
+    
         # Group by 'Fin_code' and iterate through each group
         grouped = merged_df.groupby('Fin_code')
-
         # Iterate through each group
         for fin_code, group in grouped:
             entity_outstanding=[]
@@ -192,9 +193,16 @@ def sendMailOutstandingTxns(request):
                 del entity_dict['Total_outstanding']
                 entity_outstanding.append(entity_dict)
 
-            column_order = ['Fin_year', 'Week_no', 'Entity', 'Final_charges', 'Paid_date','Paid_amount', 'Outstanding']
+            if acc_type != 'Revision':
+                column_order = ['Fin_year', 'Week_no', 'Entity', 'Final_charges', 'Paid_date','Paid_amount', 'Outstanding']
+                grand_total_row = {'Fin_year': ' ','Week_no': ' ','Entity': 'Grand Total','Final_charges': ' ','Paid_date': ' ','Paid_amount': ' ', 'Outstanding': total_outstanding}
+                mail_header_cols = ['Fin Year', 'Week No', 'Entity', 'Final Charges', 'Paid Date','Paid Amount', 'Outstanding']
+            else:
+                column_order = ['Letter_date',  'Entity', 'Final_charges', 'Paid_date','Paid_amount', 'Outstanding']
+                grand_total_row = {'Letter_date': ' ','Entity': 'Grand Total','Final_charges': ' ','Paid_date': ' ','Paid_amount': ' ', 'Outstanding': total_outstanding}
+                mail_header_cols = ['Letter Date', 'Entity', 'Final Charges', 'Paid Date','Paid Amount', 'Outstanding']
+
             rearranged_data = [{key: (d[key] if d[key] is not None else '-') if key == 'Paid_date' else d[key] for key in column_order} for d in entity_outstanding]
-            grand_total_row = {'Fin_year': ' ','Week_no': ' ','Entity': 'Grand Total','Final_charges': ' ','Paid_date': ' ','Paid_amount': ' ', 'Outstanding': total_outstanding}
             rearranged_data.append(grand_total_row)
 
             mail_list=list(Registration.objects.filter(fin_code=fin_code).values_list('l1_mail','l2_mail'))
@@ -206,7 +214,7 @@ def sendMailOutstandingTxns(request):
             html_table = "<table border='1'>\n"
             # Adding table header
             html_table += "  <tr>\n"
-            for key in ['Fin Year', 'Week No', 'Entity', 'Final Charges', 'Paid Date','Paid Amount', 'Outstanding']:
+            for key in mail_header_cols:
                 html_table += f"<th>{key}</th>\n"
 
             html_table += "  </tr>\n"

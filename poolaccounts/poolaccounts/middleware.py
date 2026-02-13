@@ -27,7 +27,6 @@ class TokenAuthenticationMiddleware(MiddlewareMixin):
         # Extract the token
         token = auth_header.split(' ', 1)[1]
         userName = request.headers.get('userName')
-        
         # Here, you should implement your token validation logic
         # For example, check if the token exists in the database
         if not self.validate_token(token , userName):

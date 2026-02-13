@@ -2,7 +2,7 @@
 import json
 from datetime import datetime
 from django.http import JsonResponse,HttpResponse , FileResponse
-from dsm.common import add530hrstoDateString, format_indian_currency,get_month_start_end_dates
+from dsm.common import add530hrstoDateString, get_date_range,get_month_start_end_dates
 from registration.extarctdb_errors import extractdb_errormsg
 from openpyxl import load_workbook
 from registration.models import Registration
@@ -87,10 +87,11 @@ def downloadReconReport(request):
     
     req_data=json.loads(request.body)
     
-    start_date,end_date=get_month_start_end_dates(req_data['formdata']['selected_month'])
-        
-    startdate=add530hrstoDateString(start_date).date()
-    enddate=add530hrstoDateString(end_date).date()
+    # start_date,end_date=get_month_start_end_dates(req_data['formdata']['selected_month'])
+    startdate,enddate=get_date_range(req_data['formdata']['from_month'] , req_data['formdata']['to_month'])
+    
+    # startdate=add530hrstoDateString(start_date).date()
+    # enddate=add530hrstoDateString(end_date).date()
     acc_type = req_data['formdata']['acc_type']
 
     response = HttpResponse(content_type='application/ms-excel')
@@ -99,11 +100,11 @@ def downloadReconReport(request):
     wb=load_workbook(filename = 'DSM_FinReconReport.xlsx')         
     ws=wb.active
     all_users=list(Registration.objects.filter(Q(end_date__isnull=True)|Q(end_date__gte=datetime.today())).order_by('fees_charges_name').values_list('fees_charges_name','fin_code'))
-
+    
     disbursed_entities_obj=DisbursedEntities.objects.filter(pool_acctype = acc_type).all()
     week_start_enddates_obj = YearCalendar.objects.all()
 
-    prev_month_year = getPrevYearMonth(req_data['formdata']['selected_month']) 
+    prev_month_year = getPrevYearMonth(req_data['formdata']['from_month']) 
     
     closing_balances_qry =  ClosingBalances.objects.filter(Month_year = prev_month_year , Acc_type = acc_type )
 
@@ -116,8 +117,7 @@ def downloadReconReport(request):
         os.makedirs(directory)
    
     summary_sheet_data = [['Fin Code','Entity Name' , 'Closing Balance']]
-
-    
+   
     for user in all_users:
         try:
             fincode=user[1].replace(" ", "")
@@ -137,9 +137,7 @@ def downloadReconReport(request):
             
             start_payable, start_receivable = 6 , 6
            
-            
-            all_paid_inrange_list1 , all_rcv_inrange_list = reco_for_user(fincode,start_date,end_date,acc_type)
-
+            all_paid_inrange_list1 , all_rcv_inrange_list = reco_for_user_current(fincode,startdate,enddate,acc_type)
 
             df_all_paid_inrange_list1 = pd.DataFrame(all_paid_inrange_list1)
             
@@ -226,12 +224,13 @@ def downloadReconReport(request):
             # summary sheet
             summary_sheet_data.append([fincode , user[0] , net_balance])
         except Exception as e:
+            print(e)
             continue
 
     del wb['Sheet1']   #deleting temp sheet
     wb = prepareSummarySheet(wb , summary_sheet_data)
 
-    in_filename=str(req_data['formdata']['acc_type'])+'_MonthReconciliation_'+str(req_data['formdata']['selected_month'])+'.xlsx'
+    in_filename=str(req_data['formdata']['acc_type'])+'_MonthReconciliation_'+str(req_data['formdata']['from_month'])+'.xlsx'
     full_path=os.path.join(directory, in_filename)
     wb.save(full_path)
     wb.save(response)    

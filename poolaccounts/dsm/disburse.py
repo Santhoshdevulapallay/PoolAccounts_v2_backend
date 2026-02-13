@@ -692,11 +692,17 @@ def updateDisbursementStatus(dis_status_qry,pooltype,status,pool_summary,prev_wk
             is_prevwk=True
             # if already status created then update it
             if len(dis_status_qry):
+                # DisbursementStatus.objects.filter(id=dis_status_qry[0]['id']).update(
+                #     net_as=True,
+                #     net_as_prevwk=True
+                # )
                 unq_id=dis_status_qry[0]['id']
             else:
                 # if not create then create it
                 dis_stat=DisbursementStatus(
-                    Disbursed_date=datetime.today())
+                    Disbursed_date=datetime.today(),
+                    net_as=True,net_as_prevwk=True,
+                    )
                 dis_stat.save()
                 unq_id=dis_stat.id
 
@@ -890,16 +896,15 @@ def storeDisbursedValues(request):
         disburse_list=json.loads(request.body)
         disburse_df=pd.DataFrame(disburse_list['selected_rows'],columns=['Fin_year', 'Week_no', 'Entity', 'Final_charges', 'Fin_code', 'id','Disburse_amount'])
 
-       
         dis_status_qry = list(DisbursementStatus.objects.filter(Disbursed_date=disburse_list['partial_status'][0]['Disbursed_date']).all().values()) if len(disburse_list['partial_status']) else []
+        
         pooltype=disburse_list['pooltype'].upper()
         # it decides whether Previous weeks or current week
         status=disburse_list['status']
         # also check the previous week status if it is empty then change dsm_prevweek or sras_prevweek status True though user not selected 
         prev_wk_update_status=True if not disburse_list['prev_week_selected'] else False
      
-        unq_id,is_prevwk =updateDisbursementStatus(dis_status_qry,pooltype,status,disburse_list['pool_summary'][0] ,prev_wk_update_status)
-       
+        unq_id,is_prevwk = updateDisbursementStatus(dis_status_qry,pooltype,status,disburse_list['pool_summary'][0] ,prev_wk_update_status)
         # consider only rows which are greater than 0 receivable
         disburse_df=disburse_df[disburse_df['Final_charges'] > 0]
         
@@ -941,12 +946,10 @@ def storeDisbursedValues(request):
         return JsonResponse('success',safe=False)
 
     except Exception as e:
-      
         return HttpResponse(extractdb_errormsg(e),status=404)
 
 def getPaymentsConsideredForDisbursement(pool_acc,legacy_bills):
     other_qry = Q(Is_disbursed=False)| Q(Is_disbursed__isnull=True)
-    #import pdb ; pdb.set_trace()
     if not legacy_bills:
         common_qry=( other_qry ) & Q(paystatus_fk__Legacy_dues=False)
     

@@ -10,6 +10,7 @@ from .common import format_indian_currency_withoutsymbol , get_quarter_end_date
 from registration.fetch_data import getFCName
 import pandas as pd
 import csv
+from django.db.models import Q
 
 def get_quarter_dates(fin_year_str, quarter):
     start_year = int(fin_year_str.split('-')[0])
@@ -262,6 +263,335 @@ def reco_for_user(fin_code,startdate,enddate,acc_type):
 
         
             
+        if acc_type == 'DSM':
+            excess_model_qry = ExcessBaseModel.objects.filter(Paid_date__range = [startdate,enddate] )
+            excess_payments_qry = list(excess_model_qry.filter(Fin_code = fin_code,).values_list('Acc_Type','Final_charges','Paid_date','Final_charges'))
+            excess_payments_list=[list(ele) for ele in excess_payments_qry]
+
+            for excess in excess_payments_list:
+                excess.insert(3, None)
+                excess.insert(4, None)
+                excess.append(0)
+            all_paid_inrange_list+= excess_payments_list
+
+
+        all_rcv_inrange_df=pd.DataFrame(receivables_qry.filter(rcvstatus_fk__Fin_code=fin_code).values('rcvstatus_fk__Week_no','rcvstatus_fk__Week_startdate','rcvstatus_fk__Week_enddate','rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date','rcvstatus_fk__Revision_no','rcvstatus_fk__Final_charges','Disbursed_amount','disbursed_date') , columns=['rcvstatus_fk__Week_no','rcvstatus_fk__Week_startdate','rcvstatus_fk__Week_enddate','rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date','rcvstatus_fk__Revision_no','rcvstatus_fk__Final_charges','Disbursed_amount','disbursed_date'])
+        all_rcv_inrange_rev = all_rcv_inrange_df[all_rcv_inrange_df['rcvstatus_fk__Revision_no']>0]
+        for _, row in all_rcv_inrange_rev.iterrows():
+            if acc_type == 'DSM':
+                df_dsm_rcv = DSMBaseModel.objects.filter(
+                    Week_no=row['rcvstatus_fk__Week_no'],
+                    Week_startdate=row['rcvstatus_fk__Week_startdate'],
+                    Week_enddate=row['rcvstatus_fk__Week_enddate'],
+                    Fin_code=fin_code,
+                    Revision_no=0
+                ).values('Final_charges','Letter_date')
+            elif acc_type == 'REAC':    
+                df_dsm_rcv = REACBaseModel.objects.filter(
+                    Week_no=row['rcvstatus_fk__Week_no'],
+                    Week_startdate=row['rcvstatus_fk__Week_startdate'],
+                    Week_enddate=row['rcvstatus_fk__Week_enddate'],
+                    Fin_code=fin_code,
+                    Revision_no=0
+                ).values('Final_charges','Letter_date')
+            elif acc_type == 'NET_AS':
+                df_dsm_rcv = NetASBaseModel.objects.filter(
+                    Week_no=row['rcvstatus_fk__Week_no'],
+                    Week_startdate=row['rcvstatus_fk__Week_startdate'],
+                    Week_enddate=row['rcvstatus_fk__Week_enddate'],
+                    Fin_code=fin_code,
+                    Revision_no=0
+                ).values('Final_charges','Letter_date')
+            all_rcv_inrange_df.loc[all_rcv_inrange_df['rcvstatus_fk__Week_no'] == row['rcvstatus_fk__Week_no'], 'rcvstatus_fk__Final_charges'] = df_dsm_rcv[0]['Final_charges']
+            all_rcv_inrange_df.loc[all_rcv_inrange_df['rcvstatus_fk__Week_no'] == row['rcvstatus_fk__Week_no'], 'rcvstatus_fk__Letter_date'] = df_dsm_rcv[0]['Letter_date']
+
+
+        all_rcv_inrange_df.drop(columns=['rcvstatus_fk__Revision_no'], inplace=True)
+        all_rcv_inrange_df['rcvstatus_fk__Letter_date'] = pd.to_datetime(all_rcv_inrange_df['rcvstatus_fk__Letter_date'])
+        start_date = pd.to_datetime(startdate)
+
+        all_rcv_inrange_df.loc[all_rcv_inrange_df['rcvstatus_fk__Letter_date'] < start_date, 'rcvstatus_fk__Final_charges'] = 0
+
+        all_rcv_outrange_df=pd.DataFrame(basemodel_qry_rcv.filter(Fin_code=fin_code).values('Week_no','Week_startdate','Week_enddate','Letter_date','Disbursement_date','Final_charges') , columns=['Week_no','Week_startdate','Week_enddate','Letter_date','Disbursement_date','Final_charges'])
+        all_rcv_outrange_df['Disbursed_amount'] = 0
+
+        all_rcv_outrange_df['disbursed_date'] = pd.NaT
+
+        all_rcv_out_next_df = pd.DataFrame(basemodel_qry_next_rcv.filter(Fin_code=fin_code).values('Week_no','Week_startdate','Week_enddate','Letter_date','Disbursement_date','Final_charges') , columns=['Week_no','Week_startdate','Week_enddate','Letter_date','Disbursement_date','Final_charges'])
+        all_rcv_out_next_df['Disbursed_amount'] = 0
+
+        all_rcv_out_next_df['disbursed_date'] = pd.NaT
+                
+        all_rcv_outrange_df.columns = ['rcvstatus_fk__Week_no','rcvstatus_fk__Week_startdate','rcvstatus_fk__Week_enddate', 'rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date', 'rcvstatus_fk__Final_charges', 'Disbursed_amount', 'disbursed_date']
+        all_rcv_out_next_df.columns = ['rcvstatus_fk__Week_no','rcvstatus_fk__Week_startdate','rcvstatus_fk__Week_enddate', 'rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date', 'rcvstatus_fk__Final_charges', 'Disbursed_amount', 'disbursed_date']
+        all_rcv_outrange_df['rcvstatus_fk__Letter_date'] = pd.to_datetime(all_rcv_outrange_df['rcvstatus_fk__Letter_date'])
+        all_rcv_out_next_df['rcvstatus_fk__Letter_date'] = pd.to_datetime(all_rcv_out_next_df['rcvstatus_fk__Letter_date'])
+
+        all_rcv_inrange_df_rev = pd.DataFrame(receivables_qry_rev.filter(rcvstatus_fk__Fin_code=fin_code).values('rcvstatus_fk__Final_charges','rcvstatus_fk__Letter_date','Disbursed_amount','disbursed_date') , columns = ['rcvstatus_fk__Final_charges','rcvstatus_fk__Letter_date','Disbursed_amount','disbursed_date'])
+        
+        if len(all_rcv_inrange_df_rev): 
+            all_rcv_inrange_df_rev['rcvstatus_fk__Week_no'] = "Revision"
+            all_rcv_inrange_df_rev['rcvstatus_fk__Week_startdate'] = pd.NaT
+            all_rcv_inrange_df_rev['rcvstatus_fk__Week_enddate'] = pd.NaT
+            all_rcv_inrange_df_rev['rcvstatus_fk__Disbursement_date'] = pd.NaT
+            all_rcv_inrange_df_rev = all_rcv_inrange_df_rev[['rcvstatus_fk__Week_no', 'rcvstatus_fk__Week_startdate', 'rcvstatus_fk__Week_enddate', 'rcvstatus_fk__Letter_date', 'rcvstatus_fk__Disbursement_date', 'rcvstatus_fk__Final_charges', 'Disbursed_amount', 'disbursed_date']]
+        else:
+            all_rcv_inrange_df_rev = pd.DataFrame(columns=['rcvstatus_fk__Week_no', 'rcvstatus_fk__Week_startdate', 'rcvstatus_fk__Week_enddate', 'rcvstatus_fk__Letter_date', 'rcvstatus_fk__Disbursement_date', 'rcvstatus_fk__Final_charges', 'Disbursed_amount', 'disbursed_date'])
+
+        all_rcv_inrange_df_rev['rcvstatus_fk__Letter_date'] = pd.to_datetime(all_rcv_inrange_df_rev['rcvstatus_fk__Letter_date'])
+        all_rcv_inrange_df_rev.loc[all_rcv_inrange_df_rev['rcvstatus_fk__Letter_date'] < start_date, 'rcvstatus_fk__Final_charges'] = 0
+
+        all_rcv_outrange_df_rev=pd.DataFrame(basemodel_qry_rcv_rev.filter(Fin_code=fin_code).values('Letter_date','Final_charges') , columns=['Letter_date','Final_charges'])
+
+        if len(all_rcv_outrange_df_rev):
+            all_rcv_outrange_df_rev['rcvstatus_fk__Week_no'] = "Revision"
+            all_rcv_outrange_df_rev['rcvstatus_fk__Week_startdate'] = pd.NaT
+            all_rcv_outrange_df_rev['rcvstatus_fk__Week_enddate'] = pd.NaT
+            all_rcv_outrange_df_rev['rcvstatus_fk__Disbursement_date'] = pd.NaT
+            all_rcv_outrange_df_rev['Disbursed_amount'] = 0
+            all_rcv_outrange_df_rev['disbursed_date'] =  pd.NaT
+
+            all_rcv_outrange_df_rev = all_rcv_outrange_df_rev[['rcvstatus_fk__Week_no', 'rcvstatus_fk__Week_startdate', 'rcvstatus_fk__Week_enddate', 'Letter_date', 'rcvstatus_fk__Disbursement_date', 'Final_charges', 'Disbursed_amount', 'disbursed_date']]
+
+        else:
+            all_rcv_outrange_df_rev = pd.DataFrame(columns=['rcvstatus_fk__Week_no', 'rcvstatus_fk__Week_startdate', 'rcvstatus_fk__Week_enddate', 'Letter_date', 'rcvstatus_fk__Disbursement_date', 'Final_charges','Disbursed_amount', 'disbursed_date'])
+        
+        all_rcv_outrange_df_rev.columns = ['rcvstatus_fk__Week_no','rcvstatus_fk__Week_startdate','rcvstatus_fk__Week_enddate', 'rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date', 'rcvstatus_fk__Final_charges', 'Disbursed_amount', 'disbursed_date']
+        
+        all_rcv_out_next_df_rev = pd.DataFrame(basemodel_qry_next_rcv_rev.filter(Fin_code=fin_code).values('Letter_date','Final_charges') , columns=['Letter_date','Final_charges'])
+        if len(all_rcv_out_next_df_rev):    
+            all_rcv_out_next_df_rev['rcvstatus_fk__Week_no'] = "Revision"
+            all_rcv_out_next_df_rev['rcvstatus_fk__Week_startdate'] = pd.NaT
+            all_rcv_out_next_df_rev['rcvstatus_fk__Week_enddate'] = pd.NaT
+            all_rcv_out_next_df_rev['rcvstatus_fk__Disbursement_date'] = pd.NaT
+            all_rcv_out_next_df_rev['Disbursed_amount'] = 0 
+            all_rcv_out_next_df_rev['disbursed_date'] = pd.NaT
+            all_rcv_out_next_df_rev = all_rcv_out_next_df_rev[['rcvstatus_fk__Week_no', 'rcvstatus_fk__Week_startdate', 'rcvstatus_fk__Week_enddate', 'Letter_date', 'rcvstatus_fk__Disbursement_date', 'Final_charges','Disbursed_amount', 'disbursed_date']]
+
+        else:
+            all_rcv_out_next_df_rev = pd.DataFrame(columns=['rcvstatus_fk__Week_no', 'rcvstatus_fk__Week_startdate', 'rcvstatus_fk__Week_enddate', 'Letter_date', 'rcvstatus_fk__Disbursement_date', 'Final_charges','Disbursed_amount', 'disbursed_date'])
+        all_rcv_out_next_df_rev.columns = ['rcvstatus_fk__Week_no','rcvstatus_fk__Week_startdate','rcvstatus_fk__Week_enddate', 'rcvstatus_fk__Letter_date','rcvstatus_fk__Disbursement_date', 'rcvstatus_fk__Final_charges', 'Disbursed_amount', 'disbursed_date']    
+
+
+        all_rcv_inrange_df_1 = pd.concat([all_rcv_inrange_df,all_rcv_outrange_df],ignore_index=True).sort_values(by='rcvstatus_fk__Letter_date').reset_index(drop=True)
+        
+        temp_rcv_inrange_df_1 = pd.concat([all_rcv_inrange_df_1,all_rcv_out_next_df],ignore_index=True)
+        
+        temp_rcv_inrange_df_2 = pd.concat([temp_rcv_inrange_df_1,all_rcv_inrange_df_rev],ignore_index=True)
+        
+        temp_rcv_inrange_df_3 = pd.concat([temp_rcv_inrange_df_2,all_rcv_outrange_df_rev],ignore_index=True)
+        
+        temp_rcv_inrange_df = pd.concat([temp_rcv_inrange_df_3,all_rcv_out_next_df_rev],ignore_index=True)
+        
+        # Step 1: Group and sum Disbursed_amount
+        temp_rcv_inrange_df['Disbursed_amount'] = pd.to_numeric(temp_rcv_inrange_df['Disbursed_amount'], errors='coerce')  # ensure numeric
+        # drop Entity name column
+        temp_rcv_inrange_df.drop(columns=['rcvstatus_fk__Disbursement_date'] ,inplace= True)
+        # Create a helper column to check duplicates of the Week_no + Letter_date combination
+        duplicate_mask = temp_rcv_inrange_df.duplicated(subset=['rcvstatus_fk__Week_no', 'rcvstatus_fk__Letter_date'])
+        # Set Final_charges to 0 where it's a duplicate
+        temp_rcv_inrange_df.loc[duplicate_mask, 'rcvstatus_fk__Final_charges'] = 0
+        # calculate Outstanding amount also
+        temp_rcv_inrange_df['Outstanding'] = temp_rcv_inrange_df['rcvstatus_fk__Final_charges'] - temp_rcv_inrange_df['Disbursed_amount']
+        temp_rcv_inrange_df['rcvstatus_fk__Letter_date'] = pd.to_datetime(temp_rcv_inrange_df['rcvstatus_fk__Letter_date'])
+
+        all_rcv_inrange_list = temp_rcv_inrange_df.sort_values(by='rcvstatus_fk__Letter_date').reset_index(drop=True).values.tolist()    
+
+        return all_paid_inrange_list,all_rcv_inrange_list
+    except Exception as e:
+        return [] , []
+
+def reco_for_user_current(fin_code,startdate,enddate,acc_type):
+    try:
+        if acc_type == 'DSM':
+            basemodel_obj = DSMBaseModel.objects.filter(Q(Letter_date__range=[startdate,enddate]), Revision_no = 0)
+
+            basemodel_qry = basemodel_obj.filter(Q(PayableorReceivable='Payable',payments__Paid_date__isnull=True ))
+            basemodel_qry_rcv = basemodel_obj.filter(Q(PayableorReceivable='Receivable',dsmreceivables__disbursed_date__isnull=True ))
+            basemodel_qry_next_rcv = basemodel_obj.filter(Q(PayableorReceivable='Receivable',dsmreceivables__disbursed_date__gt = enddate ))
+            basemodel_qry_next_pay = basemodel_obj.filter(Q(PayableorReceivable='Payable',payments__Paid_date__gt=enddate))
+            
+            payments_model_qry = Payments.objects.filter(Paid_date__range=[startdate,enddate],is_revision=False)
+            receivables_qry = DSMReceivables.objects.filter(disbursed_date__range=[startdate,enddate],is_revision=False)
+            
+            rev_payments_qry = RevisionPayments.objects.filter(Paid_date__range=[startdate,enddate])
+            basemodel_obj_rev = RevisionBaseModel.objects.filter(Q(Letter_date__range=[startdate, enddate], Acc_type='DSM'))
+            receivables_qry_rev = RevisionReceivables.objects.filter(disbursed_date__range=[startdate,enddate])
+            
+            basemodel_qry_rcv_rev = basemodel_obj_rev.filter(Q(PayableorReceivable='Receivable',revisionreceivables__disbursed_date__isnull=True ))
+            basemodel_qry_next_rcv_rev = basemodel_obj_rev.filter(Q(PayableorReceivable='Receivable',revisionreceivables__disbursed_date__gt = enddate ))
+            rev_basemodel_qry = basemodel_obj_rev.filter(Q(PayableorReceivable='Payable',revisionpayments__Paid_date__isnull=True ))
+            rev_basemodel_qry_next_pay = basemodel_obj_rev.filter(Q(PayableorReceivable='Payable',revisionpayments__Paid_date__gt=enddate))
+
+        elif acc_type == 'REAC':
+            basemodel_obj = REACBaseModel.objects.filter(Q(Letter_date__range=[startdate,enddate]))
+
+            basemodel_qry = basemodel_obj.filter(Q(PayableorReceivable='Payable',reacpayments__Paid_date__isnull=True,Effective_end_date__isnull=True ))
+
+            basemodel_qry_rcv = basemodel_obj.filter(Q(PayableorReceivable='Receivable',reacreceivables__disbursed_date__isnull=True,Effective_end_date__isnull=True ))
+
+            basemodel_qry_next_rcv = basemodel_obj.filter(Q(PayableorReceivable='Receivable',reacreceivables__disbursed_date__gt = enddate ))
+
+            basemodel_qry_next_pay = basemodel_obj.filter(Q(PayableorReceivable='Payable',reacpayments__Paid_date__gt=enddate ))
+
+            payments_model_qry = REACPayments.objects.filter(Paid_date__range=[startdate,enddate])
+            receivables_qry = REACReceivables.objects.filter(disbursed_date__range=[startdate,enddate])
+            rev_payments_qry = RevisionPayments.objects.filter(Paid_date__range=[startdate,enddate],paystatus_fk__Acc_type='REAC_REVISION')
+            basemodel_obj_rev = RevisionBaseModel.objects.filter(Q(Letter_date__range=[startdate, enddate], Acc_type='REAC_REVISION'))
+            receivables_qry_rev = RevisionReceivables.objects.filter(disbursed_date__range=[startdate,enddate],rcvstatus_fk__Acc_type='REAC_REVISION')
+            
+            basemodel_qry_rcv_rev = basemodel_obj_rev.filter(Q(PayableorReceivable='Receivable',revisionreceivables__disbursed_date__isnull=True ))
+            basemodel_qry_next_rcv_rev = basemodel_obj_rev.filter(Q(PayableorReceivable='Receivable',revisionreceivables__disbursed_date__gt = enddate ))
+            rev_basemodel_qry = basemodel_obj_rev.filter(Q(PayableorReceivable='Payable',revisionpayments__Paid_date__isnull=True ))
+            rev_basemodel_qry_next_pay = basemodel_obj_rev.filter(Q(PayableorReceivable='Payable',revisionpayments__Paid_date__gt=enddate))
+            
+            
+
+
+        elif acc_type == 'NET_AS':
+            basemodel_obj = NetASBaseModel.objects.filter(Q(Letter_date__range=[startdate,enddate]))
+
+            basemodel_qry = basemodel_obj.filter(Q(PayableorReceivable='Payable',netaspayments__Paid_date__isnull=True, Effective_end_date__isnull=True ))
+
+            basemodel_qry_rcv = basemodel_obj.filter(Q(PayableorReceivable='Receivable',netasreceivables__disbursed_date__isnull=True, Effective_end_date__isnull=True ))
+
+            basemodel_qry_next_rcv = basemodel_obj.filter(Q(PayableorReceivable='Receivable',netasreceivables__disbursed_date__gt = enddate ))
+
+            basemodel_qry_next_pay = basemodel_obj.filter(Q(PayableorReceivable='Payable',netaspayments__Paid_date__gt=enddate ))
+
+            payments_model_qry = NetASPayments.objects.filter(Paid_date__range=[startdate,enddate])
+            receivables_qry = NetASReceivables.objects.filter(disbursed_date__range=[startdate,enddate])
+            rev_payments_qry = RevisionPayments.objects.filter(Paid_date__range=[startdate,enddate])
+
+            basemodel_obj_rev = RevisionBaseModel.objects.filter(Q(Letter_date__range=[startdate, enddate], Acc_type='NETAS_REVISION'))
+            receivables_qry_rev = RevisionReceivables.objects.filter(disbursed_date__range=[startdate,enddate])
+            
+            basemodel_qry_rcv_rev = basemodel_obj_rev.filter(Q(PayableorReceivable='Receivable',revisionreceivables__disbursed_date__isnull=True ))
+            basemodel_qry_next_rcv_rev = basemodel_obj_rev.filter(Q(PayableorReceivable='Receivable',revisionreceivables__disbursed_date__gt = enddate ))
+            rev_basemodel_qry = basemodel_obj_rev.filter(Q(PayableorReceivable='Payable',revisionpayments__Paid_date__isnull=True,Letter_date__range=[startdate,enddate] ))
+            rev_basemodel_qry_next_pay = basemodel_obj_rev.filter(Q(PayableorReceivable='Payable',revisionpayments__Paid_date__gt=enddate,Letter_date__range=[startdate,enddate]))
+
+        all_paid_inrange_df = pd.DataFrame(payments_model_qry.filter(paystatus_fk__Fin_code=fin_code).values('paystatus_fk__Week_no','paystatus_fk__Week_startdate','paystatus_fk__Week_enddate','paystatus_fk__Revision_no','paystatus_fk__Final_charges','paystatus_fk__Letter_date','Paid_date','Paid_amount') , columns = ['paystatus_fk__Week_no','paystatus_fk__Week_startdate','paystatus_fk__Week_enddate','paystatus_fk__Revision_no','paystatus_fk__Final_charges','paystatus_fk__Letter_date','Paid_date','Paid_amount'])
+
+        all_paid_inrange_rev = all_paid_inrange_df[all_paid_inrange_df['paystatus_fk__Revision_no']>0]
+
+        for _,row in all_paid_inrange_rev.iterrows():
+            if acc_type == 'DSM' :
+                df_dsm_pay = DSMBaseModel.objects.filter(
+                    Week_no=row['paystatus_fk__Week_no'],
+                    Week_startdate=row['paystatus_fk__Week_startdate'],
+                    Week_enddate=row['paystatus_fk__Week_enddate'],
+                    Fin_code=fin_code,
+                    Revision_no=0
+                ).values('Final_charges','Letter_date')
+            elif acc_type == 'REAC':
+                df_dsm_pay = REACBaseModel.objects.filter(
+                    Week_no=row['paystatus_fk__Week_no'],
+                    Week_startdate=row['paystatus_fk__Week_startdate'],
+                    Week_enddate=row['paystatus_fk__Week_enddate'],
+                    Fin_code=fin_code,
+                    Revision_no=0
+                ).values('Final_charges','Letter_date')
+            elif acc_type == 'NET_AS':
+                df_dsm_pay = NetASBaseModel.objects.filter(
+                    Week_no=row['paystatus_fk__Week_no'],
+                    Week_startdate=row['paystatus_fk__Week_startdate'],
+                    Week_enddate=row['paystatus_fk__Week_enddate'],
+                    Fin_code=fin_code,
+                    Revision_no=0
+                ).values('Final_charges','Letter_date')   
+            all_paid_inrange_df.loc[all_paid_inrange_df['paystatus_fk__Week_no'] == row['paystatus_fk__Week_no'], 'paystatus_fk__Final_charges'] = df_dsm_pay[0]['Final_charges']
+            all_paid_inrange_df.loc[all_paid_inrange_df['paystatus_fk__Week_no'] == row['paystatus_fk__Week_no'], 'paystatus_fk__Letter_date'] = df_dsm_pay[0]['Letter_date']        
+        
+        all_paid_inrange_df.drop(columns=['paystatus_fk__Revision_no'], inplace=True)
+        # calculate outstanding amount
+
+        all_paid_inrange_df['paystatus_fk__Letter_date'] = pd.to_datetime(all_paid_inrange_df['paystatus_fk__Letter_date'])
+        start_date_pd = pd.to_datetime(startdate)
+
+        all_paid_inrange_df.loc[
+            (all_paid_inrange_df['paystatus_fk__Letter_date'].notna()) &
+            (all_paid_inrange_df['paystatus_fk__Letter_date'] < start_date_pd),
+            'paystatus_fk__Final_charges'
+        ] = 0
+        
+
+        all_paid_inrange_df['Paid_date'] = pd.to_datetime(all_paid_inrange_df['Paid_date'])
+        end_date_pd = pd.to_datetime(enddate)
+        all_paid_inrange_df.loc[
+            (all_paid_inrange_df['paystatus_fk__Letter_date'].notna()) &
+            (all_paid_inrange_df['paystatus_fk__Letter_date'] > end_date_pd),
+            'paystatus_fk__Final_charges'
+        ] = 0
+        
+        all_paid_inrange_df.loc[
+            (all_paid_inrange_df['Paid_date'].notna()) &
+            (all_paid_inrange_df['Paid_date'] > end_date_pd),
+            'Paid_amount'
+        ] = 0
+        
+        # Set Final_charges to 0 for duplicate (Week_no, Week_startdate, Week_enddate), keep only the first occurrence
+        duplicate_mask = all_paid_inrange_df.duplicated(subset=['paystatus_fk__Week_no', 'paystatus_fk__Week_startdate', 'paystatus_fk__Week_enddate'])
+        all_paid_inrange_df.loc[duplicate_mask, 'paystatus_fk__Final_charges'] = 0
+
+        all_paid_inrange_df['Outstanding'] = all_paid_inrange_df['paystatus_fk__Final_charges']  - all_paid_inrange_df['Paid_amount'] 
+        
+        
+        all_paid_inrange = all_paid_inrange_df.values.tolist()
+        all_paid_inrange_list=[list(ele) for ele in all_paid_inrange]
+
+        not_paid_inrange_1=list(basemodel_qry.filter(Fin_code=fin_code,Revision_no = 0).values_list('Week_no','Week_startdate','Week_enddate','Final_charges','Letter_date'))
+        
+        not_paid_inrange_rev = list(rev_basemodel_qry.filter(Fin_code=fin_code).values_list('Final_charges', 'Letter_date'))
+        not_paid_inrange_rev = [["Revision", pd.NaT, pd.NaT, ele[0], ele[1], '', 0] for ele in not_paid_inrange_rev]
+        
+        not_paid_inrange = not_paid_inrange_1+ not_paid_inrange_rev
+
+        
+        paid_outrange_1 = list(basemodel_qry_next_pay.filter(Fin_code=fin_code,Revision_no = 0).values_list('Week_no','Week_startdate','Week_enddate','Final_charges','Letter_date'))
+        paid_outrange_rev = list(rev_basemodel_qry_next_pay.filter(Fin_code=fin_code).values_list('Final_charges', 'Letter_date'))
+        paid_outrange_rev = [["Revision",pd.NaT, pd.NaT, ele[0], ele[1]] for ele in paid_outrange_rev]
+        paid_outrange = paid_outrange_1 + paid_outrange_rev
+        
+        
+        not_paid_inrange_list=[list(ele) for ele in not_paid_inrange]
+        paid_outrange_list = [list(ele) for ele in paid_outrange]
+        not_paid_inrange_list =  not_paid_inrange_list+paid_outrange_list
+        
+        for not_paid in not_paid_inrange_list:
+            not_paid.append('')
+            not_paid.append('')
+            not_paid.append(not_paid[3])
+            all_paid_inrange_list.append(not_paid.copy())
+
+        
+        
+        all_paid_inrange_df_rev = pd.DataFrame(rev_payments_qry.filter(paystatus_fk__Fin_code=fin_code).values('paystatus_fk__Entity','paystatus_fk__Final_charges','paystatus_fk__Letter_date','Paid_date','Paid_amount') , columns = ['paystatus_fk__Entity','paystatus_fk__Final_charges','paystatus_fk__Letter_date','Paid_date','Paid_amount'])
+        if len(all_paid_inrange_df_rev):
+            all_paid_inrange_df_rev['paystatus_fk__Week_no'] = "Revision"
+            all_paid_inrange_df_rev['paystatus_fk__Week_startdate'] = pd.NaT
+            all_paid_inrange_df_rev['paystatus_fk__Week_enddate'] = pd.NaT
+            all_paid_inrange_df_rev = all_paid_inrange_df_rev[['paystatus_fk__Week_no', 'paystatus_fk__Week_startdate', 'paystatus_fk__Week_enddate', 'paystatus_fk__Final_charges', 'paystatus_fk__Letter_date', 'Paid_date', 'Paid_amount']]
+            all_paid_inrange_df_rev['paystatus_fk__Letter_date'] = pd.to_datetime(all_paid_inrange_df_rev['paystatus_fk__Letter_date'])
+            start_date_pd = pd.to_datetime(startdate)
+            all_paid_inrange_df_rev.loc[
+                (all_paid_inrange_df_rev['paystatus_fk__Letter_date'].notna()) &
+                (all_paid_inrange_df_rev['paystatus_fk__Letter_date'] < start_date_pd),
+                'paystatus_fk__Final_charges'] = 0
+            all_paid_inrange_df_rev['Paid_date'] = pd.to_datetime(all_paid_inrange_df_rev['Paid_date'])
+            end_date_pd = pd.to_datetime(enddate)
+            all_paid_inrange_df_rev.loc[
+                (all_paid_inrange_df_rev['paystatus_fk__Letter_date'].notna()) &
+                (all_paid_inrange_df_rev['paystatus_fk__Letter_date'] > end_date_pd),
+                'paystatus_fk__Final_charges'] = 0
+            all_paid_inrange_df_rev.loc[
+                (all_paid_inrange_df_rev['Paid_date'].notna()) &
+                (all_paid_inrange_df_rev['Paid_date'] > end_date_pd),
+                'Paid_amount'] = 0
+            
+            all_paid_inrange_df_rev['Outstanding'] = all_paid_inrange_df_rev['paystatus_fk__Final_charges'] - all_paid_inrange_df_rev['Paid_amount']
+            all_paid_inrange_list += all_paid_inrange_df_rev.values.tolist()
+
         if acc_type == 'DSM':
             excess_model_qry = ExcessBaseModel.objects.filter(Paid_date__range = [startdate,enddate] )
             excess_payments_qry = list(excess_model_qry.filter(Fin_code = fin_code,).values_list('Acc_Type','Final_charges','Paid_date','Final_charges'))
