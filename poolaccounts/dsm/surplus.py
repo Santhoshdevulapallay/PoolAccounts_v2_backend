@@ -195,16 +195,38 @@ def downloadTransferIOM(request):
 def nldcSplitAmount(request):
     try:
         request_data=json.loads(request.body)
+        legacy_st = request_data['is_toggled']
+        today_date = datetime.now().date()
+        today_disbursements = DisbursementStatus.objects.filter( Disbursed_date=today_date, final_disburse=True ).values_list('legacy_status', flat=True)
+
+        # Count how many legacy and normal already done today
+        legacy_done_today = any(today_disbursements)          # True means legacy already done
+        normal_done_today = any(not x for x in today_disbursements)
+
+        # If current attempt is legacy and already one legacy done → block
+        if legacy_st and legacy_done_today:
+            return JsonResponse({
+                'status': False,
+                'message': 'Legacy disbursement already completed today'
+            }, safe=False)
+
+        # If current attempt is normal and already one normal done → block
+        elif not legacy_st and normal_done_today:
+            return JsonResponse({
+                'status': False,
+                'message': 'Normal disbursement already completed today'
+            }, safe=False)
         # check if already present then delete
-        NLDCPoolAmountSplit.objects.filter(disburse_date=datetime.today()).delete()
-        NLDCPoolAmountSplit(
-            disburse_date=datetime.today(),
-            amount_for_dsm=request_data['dsm_amount'],
-            amount_for_netas=request_data['netas_amount'],
-            amount_for_reac=request_data['reac_amount'],
-            is_user_checked=request_data['is_toggled']
-        ).save()
-        return JsonResponse({'status':True,'message':'Amounts Saved Successfully'},safe=False)
+        else :    
+            NLDCPoolAmountSplit.objects.filter(disburse_date=datetime.today()).delete()
+            NLDCPoolAmountSplit(
+                disburse_date=datetime.today(),
+                amount_for_dsm=request_data['dsm_amount'],
+                amount_for_netas=request_data['netas_amount'],
+                amount_for_reac=request_data['reac_amount'],
+                is_user_checked=request_data['is_toggled']
+            ).save()
+            return JsonResponse({'status':True,'message':'Amounts Saved Successfully'},safe=False)
     
     except Exception as e:
         

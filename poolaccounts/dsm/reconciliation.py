@@ -99,13 +99,13 @@ def downloadReconReport(request):
     
     wb=load_workbook(filename = 'DSM_FinReconReport.xlsx')         
     ws=wb.active
-    all_users=list(Registration.objects.filter(Q(end_date__isnull=True)|Q(end_date__gte=datetime.today())).order_by('fees_charges_name').values_list('fees_charges_name','fin_code'))
+    all_users=list(Registration.objects.filter(Q(end_date__isnull=True)).order_by('fees_charges_name').values_list('fees_charges_name','fin_code'))
     
     disbursed_entities_obj=DisbursedEntities.objects.filter(pool_acctype = acc_type).all()
     week_start_enddates_obj = YearCalendar.objects.all()
 
     prev_month_year = getPrevYearMonth(req_data['formdata']['from_month']) 
-    
+
     closing_balances_qry =  ClosingBalances.objects.filter(Month_year = prev_month_year , Acc_type = acc_type )
 
     parent_folder = os.path.abspath(os.path.join(base_dir, os.pardir))
@@ -135,7 +135,7 @@ def downloadReconReport(request):
             
             ws['A1'].value='DETAILS OF '+acc_type+' PAYMENT AND DISBURSEMENT of '+ str(user[0]) +'  DURING ('+(startdate.strftime("%d.%m.%Y"))+'-'+enddate.strftime("%d.%m.%Y") +')'
             
-            start_payable, start_receivable = 6 , 6
+            start_payable, start_receivable = 5 , 5
            
             all_paid_inrange_list1 , all_rcv_inrange_list = reco_for_user_current(fincode,startdate,enddate,acc_type)
 
@@ -171,23 +171,23 @@ def downloadReconReport(request):
                 i+=1 
             start_receivable+=i
             
-            present_row='6'
-            if start_payable == 6:
+            present_row='5'
+            if start_payable == 5:
                 ws['B7'].value='TOTAL'
                 ws['D7'].value=0
                 ws['G7'].value=0
                 ws['H7'].value=0
             else:
                 present_row=str(start_payable)
-                sum_hvalue = sum(ws[f"H{row}"].value or 0 for row in range(6, start_payable))
+                sum_hvalue = sum(ws[f"H{row}"].value or 0 for row in range(5, start_payable))
                 
                 ws['B'+present_row].value='TOTAL'
-                ws['D'+present_row].value="=SUM(D6:D"+str(start_payable-1)+")"
-                ws['G'+present_row].value="=SUM(G6:G"+str(start_payable-1)+")"
+                ws['D'+present_row].value="=SUM(D5:D"+str(start_payable-1)+")"
+                ws['G'+present_row].value="=SUM(G5:G"+str(start_payable-1)+")"
                 ws['H'+present_row].value= sum_hvalue
                 
-            if start_receivable == 6:
-                receivable_row='6'
+            if start_receivable == 5:
+                receivable_row='5'
                 ws['J7'].value='TOTAL'
                 ws['M7'].value=0
                 ws['N7'].value=0
@@ -196,11 +196,11 @@ def downloadReconReport(request):
             else:
                 receivable_row=str(start_receivable)
 
-                sum_mvalue = sum(ws[f"P{row}"].value or 0 for row in range(6, start_receivable))
+                sum_mvalue = sum(ws[f"P{row}"].value or 0 for row in range(5, start_receivable))
 
                 ws['J'+receivable_row].value='TOTAL'
-                ws['M'+receivable_row].value="=SUM(M6:M"+str(start_receivable-1)+")"
-                ws['N'+receivable_row].value="=SUM(N6:N"+str(start_receivable-1)+")"
+                ws['M'+receivable_row].value="=SUM(M5:M"+str(start_receivable-1)+")"
+                ws['N'+receivable_row].value="=SUM(N5:N"+str(start_receivable-1)+")"
                 ws['P'+receivable_row].value = sum_mvalue
             
             # # Fetch cell values
@@ -210,7 +210,7 @@ def downloadReconReport(request):
             # # Compute net balance
             net_balance = H_present - M_receivable + closing_balance
             # net_balance = "=H"+present_row+"-M"+receivable_row+"+H2"
-            if start_payable==6 and start_receivable==6:
+            if start_payable==5 and start_receivable==5:
                 ws['F8'].value='Net Balance'
                 ws['G8'].value=0
             else:
