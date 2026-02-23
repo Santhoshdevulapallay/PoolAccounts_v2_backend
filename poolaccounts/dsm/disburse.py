@@ -23,6 +23,9 @@ from django.db.models.functions import Coalesce
 import math ,ast
 from .common import keys,legacy_keys
 import pandas as pd
+from django.db import transaction
+from django.utils import timezone
+
 
 def poolAccPaidAmount(pool_acc):
     try:
@@ -417,7 +420,6 @@ def getLastDisbursedWk(request):
             cong_prevwk_status=False
         
         all_poolaccounts_summary=getPoolAccountSummary(surplus_amt,cal_already_disbursed_amt,legacy_surplus_amt)
-        
         # These are for Current Week
         current_wk_models = [
             (DSMBaseModel, 'dsm_status', 'final_dsm_receivables'),
@@ -447,6 +449,8 @@ def getLastDisbursedWk(request):
             if not locals()[status]:
                 prev_wk_df=transformPoolPrevWeek(model)
                 globals()[final_var],globals()[curr_wk] = appendFinalPrevweek(globals()[curr_wk],prev_wk_df,pool_acc)
+
+                
             else:
                 globals()[final_var] = []
         
@@ -518,7 +522,7 @@ def getLastDisbursedWk(request):
         unique_wk_dict={'dsm':dsm_unique_pairs_finwk ,'net_as':netas_unique_pairs_finwk,'reac':reac_unique_pairs_finwk,'cong':cong_unique_pairs_finwk }
         # get NLDCSplit amount for DSM and NETAS
         nldc_split_qry=list(NLDCPoolAmountSplit.objects.filter(disburse_date=datetime.today() ).values('amount_for_dsm','amount_for_netas','amount_for_reac','is_user_checked'))
-        
+
         if not len(nldc_split_qry):
             nldc_split_qry=[{'amount_for_dsm':0,'amount_for_netas':0,'amount_for_reac':0,'is_user_checked':False}]
         
@@ -598,8 +602,6 @@ def transfertoMain(request):
 
 
 
-
-
 def getDisburseDetails(request):
     try:
         input_data=json.loads(request.body)
@@ -630,6 +632,7 @@ def updateDisbursementStatus(dis_status_qry,pooltype,status,pool_summary,prev_wk
     if pooltype == 'DSM':
         collected_amount=round(pool_summary['DSM'],2)
         # here C means Current Week so is_prevwk is False
+      
         if status=='C':
             is_prevwk=False
             # if already status created then update it
@@ -641,6 +644,7 @@ def updateDisbursementStatus(dis_status_qry,pooltype,status,pool_summary,prev_wk
                 )
                 unq_id=dis_status_qry[0]['id']
             else:
+                
                 # if not create then create it
                 dis_stat=DisbursementStatus(
                     Disbursed_date=datetime.today(),
@@ -890,13 +894,17 @@ def updateDisbursementStatus(dis_status_qry,pooltype,status,pool_summary,prev_wk
     else:
         payment_df=pd.DataFrame([],columns=['fin_year','week_no','entity','final_charges','fin_code','payrcv'])
         return None,None 
-    
+
+
 def storeDisbursedValues(request):
     try:
         disburse_list=json.loads(request.body)
         disburse_df=pd.DataFrame(disburse_list['selected_rows'],columns=['Fin_year', 'Week_no', 'Entity', 'Final_charges', 'Fin_code', 'id','Disburse_amount'])
 
-        dis_status_qry = list(DisbursementStatus.objects.filter(Disbursed_date=disburse_list['partial_status'][0]['Disbursed_date']).all().values()) if len(disburse_list['partial_status']) else []
+        #dis_status_qry = list(DisbursementStatus.objects.filter(Disbursed_date=disburse_list['partial_status'][0]['Disbursed_date']).all().values()) if len(disburse_list['partial_status']) else []
+        
+        dis_status_qry = list( DisbursementStatus.objects.filter( Disbursed_date=disburse_list['partial_status'][0]['Disbursed_date'], final_disburse= False).values()) if len(disburse_list['partial_status']) else []
+        
         
         pooltype=disburse_list['pooltype'].upper()
         # it decides whether Previous weeks or current week
@@ -924,12 +932,12 @@ def storeDisbursedValues(request):
             
             # check if already present delete and push  ['disstatus_fk_id'].unique()
             for _,row in disburse_df.iterrows():
-                DisbursedEntities.objects.filter(pool_acctype=pooltype,fin_year=row['fin_year'],week_no=row['week_no'],entity=row['entity'],is_prevweeks=is_prevwk).delete()
+                DisbursedEntities.objects.filter(pool_acctype=pooltype,fin_year=row['fin_year'],week_no=row['week_no'],entity=row['entity'],is_prevweeks=is_prevwk ,disstatus_fk = unq_id ).delete()
             # reorder the columns
             disburse_df=disburse_df[['fin_year','week_no','entity','final_charges','pool_acctype','disstatus_fk_id','fin_code','payrcv','is_prevweeks','parent_table_id']]
+            
             with engine.connect() as connection:
                 disburse_df.to_sql('disbursed_entities', connection, if_exists='append',index=False)  
-
         # now update that this week is disbursed by user but not the final disbursement
         if len(disburse_list['finwk_selected']):
             try:
@@ -947,6 +955,8 @@ def storeDisbursedValues(request):
 
     except Exception as e:
         return HttpResponse(extractdb_errormsg(e),status=404)
+
+
 
 def getPaymentsConsideredForDisbursement(pool_acc,legacy_bills):
     other_qry = Q(Is_disbursed=False)| Q(Is_disbursed__isnull=True)
@@ -1055,6 +1065,7 @@ def finalAccwiseDisbursement(filtered_df , pool_base_model,pool_base_rcvmodel):
         
     return 
 
+
 #after disbursing all Accounts this updates all basemodels .     
 def finalDisbursement(request):
     try:
@@ -1067,7 +1078,8 @@ def finalDisbursement(request):
         if  last_dis_date:
             last_dis_date_object = datetime.strptime(last_dis_date, "%d-%m-%Y").date()
             # get the current disbursement date based on greater than last_disbursed_date
-            dis_status_qry=DisbursementStatus.objects.filter(Disbursed_date__gt=last_dis_date_object)
+            #dis_status_qry=DisbursementStatus.objects.filter(Disbursed_date__gte=last_dis_date_object)
+            dis_status_qry = DisbursementStatus.objects.filter( Disbursed_date__gte=last_dis_date_object,final_disburse=False)
         else:
             dis_status_qry=DisbursementStatus.objects.all()
 
@@ -1076,19 +1088,19 @@ def finalDisbursement(request):
             "dsm_prevwk", "sras_prevwk", "tras_prevwk", "mbas_prevwk",
             "reac_prevwk", "net_as_prevwk", "ir_prevwk", "cong_prevwk"
         ]
+       
         
         if len(dis_status_qry):
-            dis_status=list(dis_status_qry.order_by('Disbursed_date').values('Disbursed_date','dsm','net_as','reac','ir','dsm_prevwk','net_as_prevwk','reac_prevwk','ir_prevwk','Surplus_amt'))
-            
+            dis_status=list(dis_status_qry.order_by('Disbursed_date').values('id','Disbursed_date','dsm','net_as','reac','ir','dsm_prevwk','net_as_prevwk','reac_prevwk','ir_prevwk','Surplus_amt'))
+
             # check all the disbursement status changed to 1 or not
             if (dis_status[0]['dsm'] and dis_status[0]['net_as']  and dis_status[0]['reac'] and dis_status[0]['ir'] and dis_status[0]['dsm_prevwk'] and dis_status[0]['net_as_prevwk'] and dis_status[0]['reac_prevwk'] and dis_status[0]['ir_prevwk']):
                 # first do the DSM disbursement
                 disbursement_date=dis_status[0]['Disbursed_date']
-                dis_entities_df=pd.DataFrame(DisbursedEntities.objects.filter(disstatus_fk__Disbursed_date=disbursement_date ).all().values())
+                dis_entities_df=pd.DataFrame(DisbursedEntities.objects.filter(disstatus_fk_id=dis_status[0]['id'] ).all().values())
 
                 amount_disbursed_thisdate = dis_entities_df[dis_entities_df['payrcv']=='R']['final_charges'].sum()
                 intimate_nldc_qry=IntimateNLDC.objects.filter(is_used_indisbursement=False)
-
                 if not legacy_st :
                     dis_status_prev_wk_legacy=list(DisbursementStatus.objects.filter(Disbursed_date=last_dis_date_object).values_list('legacy_surplus_amt',flat=True) )
 
@@ -1108,7 +1120,7 @@ def finalDisbursement(request):
 
                     else:
                         # get previous week amount from last disbursed date
-                        dis_status_prev_wk=list(DisbursementStatus.objects.filter(Disbursed_date=last_dis_date_object).values_list('Surplus_amt','revision_disbursed') )
+                        dis_status_prev_wk=list(DisbursementStatus.objects.filter(Disbursed_date=last_dis_date_object,final_disburse=True).values_list('Surplus_amt','revision_disbursed') )
                         
                         if len(dis_status_prev_wk): 
                             surplus_amt = dis_status_prev_wk[0][0] if dis_status_prev_wk[0][0] else 0 #if None make it 0
@@ -1154,20 +1166,22 @@ def finalDisbursement(request):
                         
                     # changing final_disburse status to True , parallely update Surplus amount also
                     update_data = {field: True for field in true_fields}
+
                     update_data.update({
                         "Surplus_amt": net_amount,
                         "legacy_surplus_amt": prev_wk_amount_legacy,
-                        "legacy_status" : False
+                        "legacy_status" : False,
+                        "Disbursed_date" : datetime.now().date()
                     })
                     dis_status_qry.update(**update_data)
                     # dis_status_qry.update(final_disburse=True,Surplus_amt=net_amount,legacy_surplus_amt=prev_wk_amount_legacy)
                         # update the Intimate NLDC table
                     intimate_nldc_qry.update(is_used_indisbursement=True)
                     TempDisbursedWeeks.objects.all().delete()
+                    nldc_split_qry.objects.all().delete()
                     return JsonResponse({'status':True , 'message':'Disbursement done Successfully'},safe=False)
                 else:
                     dis_status_prev_wk=list(DisbursementStatus.objects.filter(Disbursed_date=last_dis_date_object).values_list('Surplus_amt',flat=True) )
-
                     if len(dis_status_prev_wk):
                         prev_wk_amount=dis_status_prev_wk[0]
                     else :
@@ -1213,7 +1227,7 @@ def finalDisbursement(request):
                         else:continue
 
                         getPaymentsConsideredForDisbursement(p_type,legacy_st) #Payables status changer
-                       
+                   
                     # changing final_disburse status to True , parallely update Surplus amount also
                     update_data = {field: True for field in true_fields}
                     update_data.update({
@@ -1226,6 +1240,7 @@ def finalDisbursement(request):
                     dis_status_qry.update(**update_data)
                     # dis_status_qry.update(final_disburse=True,Surplus_amt=prev_wk_amount,legacy_surplus_amt=net_amount,legacy_status = True , Disbursed_date = datetime.now().date())
                     TempDisbursedWeeks.objects.all().delete()
+                    nldc_split_qry.objects.all().delete()
                     return JsonResponse({'status':True , 'message':'Legacy Disbursement done Successfully'},safe=False)     
             else: 
                 return JsonResponse({'status':False , 'message':'Disbursement not completed for all Pool types  , Please complete those first'},safe=False)
@@ -1236,48 +1251,37 @@ def finalDisbursement(request):
     except Exception as e:
         print(e)
         return HttpResponse(extractdb_errormsg(e),status=404)
-    
+
+
 
 def revokeDisbursement(request):
     try:
         in_data=json.loads(request.body)
         last_disbursed_date=datetime.strptime(in_data['last_disburse_date'],'%d-%m-%Y').date()
         
-        dis_status_qry=DisbursementStatus.objects.filter(Disbursed_date__gte=last_disbursed_date)
-        dis_entities=DisbursedEntities.objects.filter(disstatus_fk__Disbursed_date__gte=last_disbursed_date,payrcv='R')
-
-        pool_acc_upper=in_data['selected_row']['label'].upper()
-        # delete already temp disbursed weeks alse
-        TempDisbursedWeeks.objects.filter(pool_acctype=pool_acc_upper).delete()
+        # Get latest DisbursementStatus row (based on id) after given date
+        latest_status = (
+            DisbursementStatus.objects
+            .filter(Disbursed_date__gte=last_disbursed_date,final_disburse = False)
+            .order_by('-id')
+            .first()
+        )
         
-        if in_data['selected_row']['label'] == 'dsm':
-            dis_status_qry.update(
-                dsm=False,
-                dsm_prevwk=False
-            )
-        elif in_data['selected_row']['label'] == 'net_as':
-            dis_status_qry.update(
-                net_as=False,
-                net_as_prevwk=False
-            )   
-        elif in_data['selected_row']['label'] == 'reac':
-            dis_status_qry.update(
-                reac=False,
-                reac_prevwk=False
-            )
-        elif in_data['selected_row']['label'] == 'cong':
-            dis_status_qry.update(
-                cong=False,
-                cong_prevwk=False
-            )
-        elif in_data['selected_row']['label'] == 'ir':
-            dis_status_qry.update(
-                ir=False,
-                ir_prevwk=False
-            )
-        else:
-            pass
-        dis_entities.filter(pool_acctype=pool_acc_upper).delete()
+        if latest_status:
+            # Delete temp weeks
+            TempDisbursedWeeks.objects.all().delete()
+            DisbursedEntities.objects.filter(
+                disstatus_fk=latest_status.id
+            ).delete()
+            #Delete Disbursement Status also after revocking
+            latest_status.delete()
+            
+        else :
+            
+            return JsonResponse('No pending Disbursement to revoke!', safe=False)
+        
+        
+     
         return JsonResponse('Disbursement Revoked Successfully' , safe=False)
     except Exception as e:
         return HttpResponse(extractdb_errormsg(e),status=404)
